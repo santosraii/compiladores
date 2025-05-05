@@ -1,0 +1,49 @@
+programa -> lista_de_comandos
+
+lista_de_comandos -> comando lista_de_comandos
+    | vazio
+
+comando -> declaracao
+    | atribuicao
+    | print_cmd
+
+declaracao -> 'int' ID ';'
+    | 'float' ID ';'
+    | 'bool' ID ';'
+    | 'char' ID ';'
+
+atribuicao -> ID '=' expressao ';'
+
+print_cmd -> 'show' ID ';'
+
+expressao -> expressao '+' expressao
+    | expressao '-' expressao
+    | expressao '*' expressao
+    | expressao '/' expressao
+    | expressao '<' expressao
+    | expressao '<=' expressao
+    | expressao '>' expressao
+    | expressao '>=' expressao
+    | expressao '==' expressao
+    | expressao '!=' expressao
+    | expressao '&&' expressao
+    | expressao '||' expressao
+    | '!' expressao
+    | '(' expressao ')'
+    | termo
+    | cast_exp
+
+cast_exp -> '(' tipo ')' expressao
+
+tipo -> 'int'
+    | 'float'
+    | 'bool'
+    | 'char'
+
+termo -> NUM_INT
+    | NUM_FLOAT
+    | BOOL
+    | CHAR
+    | ID
+
+vazio ->
