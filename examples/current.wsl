@@ -1,9 +1,3 @@
-for (var i = 0; i < 5; i = i + 1) {
-    if (i <= 3) {
-        printf("mundo");
-        continue;
-    }
+var a: int = (10 + 10 / 2);
 
-    printf("ola");
-    break;
-}
+printf(a);

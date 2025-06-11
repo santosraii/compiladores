@@ -40,6 +40,7 @@ int yyerror(string msg);
 %right '.'
 
 %left TK_NOT
+%left TK_OPEN_PARENTHESIS TK_CLOSE_PARENTHESIS
 
 %nonassoc THEN
 %nonassoc TK_ELSE
@@ -91,7 +92,12 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                     $$.traducao = $4.traducao;
 
                     if ($4.tipo == TIPO_STRING) {
-                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + $4.label + ".length);\n";
+                        string temp = generateName();
+
+                        compilador.adicionarVariavel(temp, temp, TIPO_INT);
+                        $$.traducao += temp + " = " + $4.label + ".length + 1;\n";
+
+                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
                         $$.traducao += "strcpy(" + $$.label + ".data, " + $4.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $4.label + ".length;\n";
                     } else {
@@ -104,7 +110,7 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                     compilador.debug("Declarando variável " + $2.label + " do tipo " + $4.tipo + " com valor " + $6.label);
 
                     if ($4.label != $6.tipo) {
-                        yyerror("O tipo da variável \"" + $2.label + "\" não corresponde ao tipo declarado");
+                        yyerror("O tipo da variável \"" + $2.label + "\" (" + $4.label + ") não corresponde ao tipo declarado (" + $6.tipo + ")");
                     }
 
                     auto var = compilador.getContextoAtual()->buscarVariavel($2.label);
@@ -122,7 +128,11 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                     $$.traducao = $6.traducao;
 
                     if ($6.tipo == TIPO_STRING) {
-                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + $6.label + ".length);\n";
+                        string temp = generateName();
+                        compilador.adicionarVariavel(temp, temp, TIPO_INT);
+                        $$.traducao += temp + " = " + $6.label + ".length + 1;\n";
+
+                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
                         $$.traducao += "strcpy(" + $$.label + ".data, " + $6.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $6.label + ".length;\n";
                     } else {
@@ -146,7 +156,11 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
                     $$.traducao = $3.traducao;
 
                     if (var->tipo == TIPO_STRING) {
-                        $$.traducao += var->nomeFicticio + ".data = (char*) malloc(sizeof(char) * " + $3.label + ".length);\n";
+                        string temp = generateName();
+                        compilador.adicionarVariavel(temp, temp, TIPO_INT);
+                        $$.traducao += temp + " = " + $3.label + ".length + 1;\n";
+
+                        $$.traducao += var->nomeFicticio + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
                         $$.traducao += "strcpy(" + var->nomeFicticio + ".data, " + $3.label + ".data);\n";
                         $$.traducao += var->nomeFicticio + ".length = " + $3.label + ".length;\n";
                     } else {
@@ -520,19 +534,55 @@ CONTROLE_FLUXO: TK_IF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS COMMAND
                 compilador.removerUltimoControleFluxo();
             }
 
-// EXPRESSAO:  CONVERSAO_EXPLICITA { $$ = $1; }
-EXPRESSAO: OPERADORES_ARITMETICOS { $$ = $1; }
+EXPRESSAO: CONVERSAO_EXPLICITA { $$ = $1; }
+            | OPERADORES_ARITMETICOS { $$ = $1; }
             | OPERADORES_LOGICOS { $$ = $1; }
             | OPERADORES_RELACIONAIS { $$ = $1; }
             | ATRIBUIR_VARIAVEL { $$ = $1; }
             | LITERAIS { $$.traducao = $1.traducao; }
             | PRIMARIA { $$.traducao = $1.traducao; }
+            | TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS { $$ = $2; }
 
-// CONVERSAO_EXPLICITA: TK_OPEN_PARENTHESIS TK_TYPE TK_CLOSE_PARENTHESIS EXPRESSAO {
-//                         compilador.debug("Convertendo expressão " + $4.traducao + " para tipo " + $2.label);
-//                         $$.traducao = $4.traducao;
-//                         $$.tipo = $2.label;
-//                     }
+CONVERSAO_EXPLICITA: TK_OPEN_PARENTHESIS TK_TYPE TK_CLOSE_PARENTHESIS EXPRESSAO {
+                        compilador.debug("Convertendo expressão " + $4.label + " para tipo " + $2.label);
+
+                        $$.traducao = $4.traducao;
+                        
+                        if ($2.label == $4.tipo) {
+                            compilador.debug("Expressão já é do tipo " + $2.label + ", não é necessário converter");
+
+                            $$.tipo = $2.label;
+                            $$.label = $4.label;
+                        } else {
+                            if ($4.tipo == TIPO_STRING || $2.label == TIPO_STRING) {
+                                yyerror("Não é possível converter uma string para outro tipo");
+                            }
+
+                            string temp = generateName();
+                            compilador.adicionarVariavel(temp, temp, $2.label);
+
+                            if ($2.label == TIPO_BOOLEAN) {
+                                string ifLabel = generateName();
+                                string ifGotoLabel = generateLabel();
+                                string elseGotoLabel = generateLabel();
+
+                                compilador.adicionarVariavel(ifLabel, ifLabel, TIPO_BOOLEAN);
+
+                                $$.traducao += ifLabel + " = " + $4.label + " != 0;\n";
+                                $$.traducao += "if (" + ifLabel + ") goto " + ifGotoLabel + ";\n";
+                                $$.traducao += temp + " = false;\n";
+                                $$.traducao += "goto " + elseGotoLabel + ";\n";
+                                $$.traducao += ifGotoLabel + ": \n";
+                                $$.traducao += temp + " = true;\n";
+                                $$.traducao += elseGotoLabel + ": \n";
+                            } else {
+                                $$.traducao += temp + " = (" + $2.label + ")" + $4.label + ";\n";
+                            }
+
+                            $$.tipo = $2.label;
+                            $$.label = temp;
+                        }
+                    }
 
 OPERADORES_ARITMETICOS: EXPRESSAO TK_PLUS EXPRESSAO {
                         compilador.debug("Somando expressão " + $1.label + " (" + $1.tipo + ") com expressão " + $3.label + " (" + $3.tipo + ")");
@@ -888,7 +938,7 @@ LITERAIS: TK_NUM {
 
             $$.traducao += $$.label + ".data[" + to_string(size - 1) + "] = '\\0';\n";
 
-            $$.traducao += $$.label + ".length = " + to_string(size) + ";\n";
+            $$.traducao += $$.label + ".length = " + to_string(size - 1) + ";\n";
 
             compilador.adicionarVariavel($$.label, $$.label, $$.tipo);
         }

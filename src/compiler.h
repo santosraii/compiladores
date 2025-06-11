@@ -170,10 +170,10 @@ namespace compiler {
                 codigoGerado += "#define false 0\n";
                 codigoGerado += "\n";
 
-                codigoGerado += "struct string {\n";
+                codigoGerado += "typedef struct {\n";
                 codigoGerado += "\tchar* data;\n";
                 codigoGerado += "\tint length;\n";
-                codigoGerado += "};\n\n";
+                codigoGerado += "} string;\n\n";
 
                 vector<string> splitted = split(codigo, "\n");
 
