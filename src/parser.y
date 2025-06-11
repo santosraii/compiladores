@@ -40,7 +40,7 @@ int yyerror(string msg);
 %right '.'
 
 %left TK_NOT
-%left TK_OPEN_PARENTHESIS TK_CLOSE_PARENTHESIS
+%left TK_CLOSE_PARENTHESIS
 
 %nonassoc THEN
 %nonassoc TK_ELSE
@@ -97,7 +97,7 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                         compilador.adicionarVariavel(temp, temp, TIPO_INT);
                         $$.traducao += temp + " = " + $4.label + ".length + 1;\n";
 
-                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
+                        $$.traducao += $$.label + ".data = (char*) malloc(" + temp + ");\n";
                         $$.traducao += "strcpy(" + $$.label + ".data, " + $4.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $4.label + ".length;\n";
                     } else {
@@ -132,7 +132,7 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                         compilador.adicionarVariavel(temp, temp, TIPO_INT);
                         $$.traducao += temp + " = " + $6.label + ".length + 1;\n";
 
-                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
+                        $$.traducao += $$.label + ".data = (char*) malloc(" + temp + ");\n";
                         $$.traducao += "strcpy(" + $$.label + ".data, " + $6.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $6.label + ".length;\n";
                     } else {
@@ -160,7 +160,7 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
                         compilador.adicionarVariavel(temp, temp, TIPO_INT);
                         $$.traducao += temp + " = " + $3.label + ".length + 1;\n";
 
-                        $$.traducao += var->nomeFicticio + ".data = (char*) malloc(sizeof(char) * " + temp + ");\n";
+                        $$.traducao += var->nomeFicticio + ".data = (char*) malloc(" + temp + ");\n";
                         $$.traducao += "strcpy(" + var->nomeFicticio + ".data, " + $3.label + ".data);\n";
                         $$.traducao += var->nomeFicticio + ".length = " + $3.label + ".length;\n";
                     } else {
@@ -204,13 +204,79 @@ COMANDOS_CUSTOMIZADOS: TK_BREAK {
                     | TK_SCANF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
                         compilador.debug("Comando SCANF");
 
-                        $$.tipo = TIPO_STRING;
-                        $$.label = generateName();
+                        if ($3.tipo != TIPO_STRING) {
+                            yyerror("O comando SCANF precisa ser usado com uma variável do tipo string");
+                        }
+
+                        string temp = generateName();
+                        string temp2 = generateName();
+                        string temp3 = generateName();
+                        string temp4 = generateName();
+                        string temp5 = generateName();
+                        string temp6 = generateName();
+                        string temp7 = generateName();
+                        string temp8 = generateName();
+                        string temp9 = generateName();
+
+                        compilador.adicionarVariavel(temp, temp, TIPO_INT);
+                        compilador.adicionarVariavel(temp2, temp2, TIPO_INT);
+                        compilador.adicionarVariavel(temp3, temp3, TIPO_INT);
+                        compilador.adicionarVariavel(temp4, temp4, TIPO_INT);
+                        compilador.adicionarVariavel(temp5, temp5, TIPO_INT);
+                        compilador.adicionarVariavel(temp6, temp6, TIPO_INT);
+                        compilador.adicionarVariavel(temp7, temp7, TIPO_INT);
+                        compilador.adicionarVariavel(temp8, temp8, TIPO_INT);
+                        compilador.adicionarVariavel(temp9, temp9, TIPO_INT);
+
+                        string inicioLoop = generateLabel();
+                        string fimLoop = generateLabel();
+                        string redimensionar = generateLabel();
+                        string continuarLoop = generateLabel();
+                        string fimRedimensionar = generateLabel();
+
                         $$.traducao = $3.traducao;
-
-                        compilador.adicionarVariavel($$.label, $$.label, TIPO_STRING);
-
-                        $$.traducao += "scanf(\"" + $3.label + "\", " + $$.label + ".data);\n";
+                        $$.traducao += temp + " = 32;\n"; // tamanho inicial
+                        $$.traducao += temp2 + " = 0;\n"; // posição atual
+                        $$.traducao += temp3 + " = 0;\n"; // caractere lido
+                        $$.traducao += temp4 + " = 0;\n"; // flag de fim
+                        $$.traducao += temp5 + " = 0;\n"; // tamanho atual
+                        
+                        // Aloca o buffer inicial
+                        $$.traducao += $3.label + ".data = (char*)malloc(" + temp + ");\n";
+                        $$.traducao += $3.label + ".length = 0;\n";
+                        
+                        // Loop de leitura
+                        $$.traducao += inicioLoop + ":\n";
+                        $$.traducao += temp3 + " = getchar();\n";
+                        
+                        // Verifica se é newline ou EOF
+                        $$.traducao += temp4 + " = " + temp3 + " == '\\n';\n";
+                        $$.traducao += temp5 + " = " + temp3 + " == EOF;\n";
+                        $$.traducao += temp6 + " = " + temp4 + " || " + temp5 + ";\n";
+                        $$.traducao += "if (" + temp6 + ") goto " + fimLoop + ";\n";
+                        
+                        // Verifica se precisa redimensionar
+                        $$.traducao += temp7 + " = " + temp2 + " >= " + temp + " - 1;\n";
+                        $$.traducao += "if (" + temp7 + ") goto " + redimensionar + ";\n";
+                        $$.traducao += "goto " + continuarLoop + ";\n";
+                        
+                        // Redimensiona o buffer
+                        $$.traducao += redimensionar + ":\n";
+                        $$.traducao += temp + " = " + temp + " * 2;\n";
+                        $$.traducao += $3.label + ".data = (char*)realloc(" + $3.label + ".data, " + temp + ");\n";
+                        $$.traducao += "goto " + continuarLoop + ";\n";
+                        
+                        // Continua o loop
+                        $$.traducao += continuarLoop + ":\n";
+                        $$.traducao += $3.label + ".data[" + temp2 + "] = " + temp3 + ";\n";
+                        $$.traducao += temp2 + " = " + temp2 + " + 1;\n";
+                        $$.traducao += temp3 + " = " + temp3 + " + 1;\n";
+                        $$.traducao += "goto " + inicioLoop + ";\n";
+                        
+                        // Fim do loop
+                        $$.traducao += fimLoop + ":\n";
+                        $$.traducao += $3.label + ".data[" + temp2 + "] = '\\0';\n";
+                        $$.traducao += $3.label + ".length = " + temp3 + ";\n";
                     }
                     | TK_PRINTF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
                         compilador.debug("Comando PRINTF");
@@ -788,12 +854,33 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                             yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
                         }
 
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+                        
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+                        
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
+                        }
+
                         string nomeFicticio = generateName();
 
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " > " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " > " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
@@ -804,12 +891,33 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                             yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
                         }
 
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+                        
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+                        
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
+                        }
+
                         string nomeFicticio = generateName();
 
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " < " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " < " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
@@ -820,12 +928,33 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                             yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
                         }
 
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+                        
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+                        
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
+                        }
+
                         string nomeFicticio = generateName();
 
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " >= " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " >= " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
@@ -836,12 +965,33 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                             yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
                         }
 
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+                        
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+                        
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
+                        }
+
                         string nomeFicticio = generateName();
 
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " <= " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " <= " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
@@ -930,7 +1080,7 @@ LITERAIS: TK_NUM {
 
             int size = $1.label.length() - 1;
 
-            $$.traducao = $$.label + ".data = (char*)malloc(" + to_string(size) + " * sizeof(char));\n";
+            $$.traducao = $$.label + ".data = (char*)malloc(" + to_string(size) + ");\n";
 
             for (int i = 0; i < size - 1; i++) {
                 $$.traducao += $$.label + ".data[" + to_string(i) + "] = '" + $1.label[i + 1] + "';\n";
