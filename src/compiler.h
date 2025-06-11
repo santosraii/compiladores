@@ -11,6 +11,7 @@ namespace compiler {
 
     class Variavel;
     class Contexto;
+    class ControleFluxo;
     class Compilador;
 
     const string TIPO_INT = "int";
@@ -18,6 +19,17 @@ namespace compiler {
     const string TIPO_CHAR = "char";
     const string TIPO_BOOLEAN = "bool";
     const string TIPO_STRING = "string";
+
+    int variableCount = 0;
+    int labelCount = 0;
+
+    string generateName() {
+        return "t" + to_string(variableCount++);
+    }
+
+    string generateLabel() {
+        return "l" + to_string(labelCount++);
+    }
 
     list<Variavel*> todasVariaveisJaDeclaradas = list<Variavel*>();
 
@@ -74,9 +86,67 @@ namespace compiler {
             }
     };
 
+    class CasoSwitch {
+        public:
+            string label;
+            string traducaoExpressao;
+            string traducaoComando;
+
+            CasoSwitch(string label, string traducaoExpressao, string traducaoComando) {
+                this->label = label;
+                this->traducaoExpressao = traducaoExpressao;
+                this->traducaoComando = traducaoComando;
+            }
+    };
+
+    class ControleFluxo {
+        public:
+            string inicioLabel;
+            string fimLabel;
+            string switchType;
+            list<CasoSwitch*> casos;
+
+            ControleFluxo(string switchType) {
+                this->inicioLabel = generateLabel();
+                this->fimLabel = generateLabel();
+                this->switchType = switchType;
+                this->casos = list<CasoSwitch*>();
+            }
+
+            bool hasCasoPadrao() {
+                for (CasoSwitch* caso : this->casos) {
+                    if (caso->label == "default") {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            bool hasPeloMenosUmCaso() {
+                int casos = 0;
+
+                for (CasoSwitch* caso : this->casos) {
+                    if (caso->label != "default") {
+                        casos++;
+                    }
+                }
+
+                return casos > 0;
+            }
+
+            void adicionarCaso(string label, string traducaoExpressao, string traducaoComando) {
+                this->casos.push_back(new CasoSwitch(label, traducaoExpressao, traducaoComando));
+            }
+
+            bool isSwitch() {
+                return this->switchType != "";
+            }
+    };
+
     class Compilador {
         private:
             list<Contexto*> contextos;
+            list<ControleFluxo*> controleFluxo;
             bool debugMode;
             
         public:
@@ -84,6 +154,7 @@ namespace compiler {
             Compilador() {
                 this->contextos = list<Contexto*>();
                 this->contextos.push_back(new Contexto());
+                this->controleFluxo = list<ControleFluxo*>();
                 this->debugMode = true;
             }
 
@@ -91,6 +162,8 @@ namespace compiler {
                 string codigoGerado = "";
 
                 codigoGerado += "#include <stdlib.h>\n";
+                codigoGerado += "#include <stdio.h>\n";
+                codigoGerado += "#include <string.h>\n";
                 codigoGerado += "\n";
                 codigoGerado += "#define bool char\n";
                 codigoGerado += "#define true 1\n";
@@ -120,7 +193,23 @@ namespace compiler {
 
                 cout << codigoGerado << endl;
             }
-            
+
+            ControleFluxo* adicionarControleFluxo(string switchType = "") {
+                ControleFluxo* controleFluxo = new ControleFluxo(switchType);
+                this->controleFluxo.push_back(controleFluxo);
+                return controleFluxo;
+            }
+
+            ControleFluxo* removerUltimoControleFluxo() {
+                ControleFluxo* controleFluxo = this->controleFluxo.back();
+                this->controleFluxo.pop_back();
+                return controleFluxo;
+            }
+
+            ControleFluxo* getUltimoControleFluxo() {
+                return this->controleFluxo.back();
+            }
+
             Contexto* adicionarContexto() {
                 Contexto* contexto = new Contexto();
                 this->contextos.push_back(contexto);

@@ -15,21 +15,15 @@ typedef struct {
 
 Compilador compilador = Compilador();
 
-int variableCount = 0;
-
-string generateName() {
-    return "t" + to_string(variableCount++);
-}
-
 #define YYSTYPE Atributo
 
 int yylex(void);
 int yyerror(string msg);
 %}
 
-%token TK_SEMICOLON TK_COLON TK_OPEN_PARENTHESIS TK_CLOSE_PARENTHESIS
-%token TK_VAR TK_DO TK_WHILE TK_FOR TK_CONTINUE TK_BREAK TK_IF
-%token TK_ELSE TK_RETURN TK_AND TK_OR TK_NOT TK_PLUS TK_MINUS TK_MULT
+%token TK_SEMICOLON TK_COLON TK_COMMA TK_OPEN_PARENTHESIS TK_CLOSE_PARENTHESIS TK_OPEN_BRACE TK_CLOSE_BRACE
+%token TK_VAR TK_DO TK_WHILE TK_FOR TK_SWITCH TK_CASE TK_DEFAULT TK_CONTINUE TK_BREAK TK_IF
+%token TK_ELSE TK_RETURN TK_AND TK_OR TK_NOT TK_PLUS TK_MINUS TK_MULT TK_SCANF TK_PRINTF TK_PRINTFLN
 %token TK_DIV TK_MOD TK_EQ TK_NE TK_ASSIGN TK_GT TK_LT TK_GE TK_LE
 %token TK_DOT TK_TYPE TK_STRING TK_CHAR TK_NUM TK_REAL TK_BOOLEAN TK_ID
 
@@ -47,25 +41,40 @@ int yyerror(string msg);
 
 %left TK_NOT
 
+%nonassoc THEN
+%nonassoc TK_ELSE
+
+
 %%
 
 START: COMMANDS {
     compilador.compilar($1.traducao);
 }
 
-COMMANDS: COMMAND COMMANDS { $$.traducao = $1.traducao + $2.traducao; } 
+COMMANDS: COMMAND COMMANDS {
+            compilador.debug("Adicionando comando ao bloco de comandos");
+            $$.traducao = $1.traducao + $2.traducao;
+        } 
         | { $$.traducao = ""; }
 
-COMMAND: CRIAR_CONTEXTO COMMANDS ENCERRAR_CONTEXTO { $$.traducao = $2.traducao; }
-        | DECLARAR_VARIAVEL TK_SEMICOLON { $$ = $1; }
-        | ATRIBUIR_VARIAVEL TK_SEMICOLON { $$ = $1; }
+COMMAND: CRIAR_CONTEXTO COMMANDS ENCERRAR_CONTEXTO {
+            compilador.debug("Criando novo contexto a partir de um novo bloco de comandos");
+            $$.traducao = $2.traducao;
+        }
+        | DECLARAR_VARIAVEL PONTO_VIRGULA_OPCIONAL { $$ = $1; }
+        | ATRIBUIR_VARIAVEL PONTO_VIRGULA_OPCIONAL { $$ = $1; }
+        | COMANDOS_CUSTOMIZADOS PONTO_VIRGULA_OPCIONAL { $$ = $1; }
+        | CONTROLE_FLUXO { $$ = $1; }
 
-CRIAR_CONTEXTO: '{' { compilador.debug("Criando contexto"); compilador.adicionarContexto(); }
+PONTO_VIRGULA_OPCIONAL: TK_SEMICOLON { $$.traducao = ""; }
+                        | { $$.traducao = ""; }
 
-ENCERRAR_CONTEXTO: '}' { compilador.debug("Encerrando contexto"); compilador.removerUltimoContexto(); }
+CRIAR_CONTEXTO: TK_OPEN_BRACE { compilador.debug("Criando contexto"); compilador.adicionarContexto(); }
+
+ENCERRAR_CONTEXTO: TK_CLOSE_BRACE { compilador.debug("Encerrando contexto"); compilador.removerUltimoContexto(); }
 
 DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
-                    compilador.debug("Declarando variável " + $2.label + " com expressão " + $4.traducao);
+                    compilador.debug("Declarando variável " + $2.label + " do tipo " + $4.tipo + " com valor " + $4.label);
 
                     auto var = compilador.getContextoAtual()->buscarVariavel($2.label);
 
@@ -81,8 +90,9 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                     $$.tipo = $4.tipo;
                     $$.traducao = $4.traducao;
 
-                    if ($4.tipo == TIPO_STRING) { // ISSO NÃO PODE, TEMOS QUE MUDAR ISSO
-                        $$.traducao += $$.label + ".data = " + $4.label + ".data;\n";
+                    if ($4.tipo == TIPO_STRING) {
+                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + $4.label + ".length);\n";
+                        $$.traducao += "strcpy(" + $$.label + ".data, " + $4.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $4.label + ".length;\n";
                     } else {
                         $$.traducao += $$.label + " = " + $4.label + ";\n";
@@ -91,7 +101,7 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                 }
                 |
                 TK_VAR TK_ID TK_COLON TK_TYPE TK_ASSIGN EXPRESSAO {
-                    compilador.debug("Declarando variável " + $2.label + " com expressão " + $5.traducao);
+                    compilador.debug("Declarando variável " + $2.label + " do tipo " + $4.tipo + " com valor " + $6.label);
 
                     if ($4.label != $6.tipo) {
                         yyerror("O tipo da variável \"" + $2.label + "\" não corresponde ao tipo declarado");
@@ -111,8 +121,9 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                     $$.tipo = $6.tipo;
                     $$.traducao = $6.traducao;
 
-                    if ($6.tipo == TIPO_STRING) { // ISSO NÃO PODE, TEMOS QUE MUDAR ISSO
-                        $$.traducao += $$.label + ".data = " + $6.label + ".data;\n";
+                    if ($6.tipo == TIPO_STRING) {
+                        $$.traducao += $$.label + ".data = (char*) malloc(sizeof(char) * " + $6.label + ".length);\n";
+                        $$.traducao += "strcpy(" + $$.label + ".data, " + $6.label + ".data);\n";
                         $$.traducao += $$.label + ".length = " + $6.label + ".length;\n";
                     } else {
                         $$.traducao += $$.label + " = " + $6.label + ";\n";
@@ -120,7 +131,7 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
                 }
 
 ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
-                    compilador.debug("Atribuindo variável " + $1.label + " com expressão " + $3.traducao);
+                    compilador.debug("Atribuindo variável " + $1.label + " do tipo " + $3.tipo + " com valor " + $3.label);
 
                     auto var = compilador.buscarVariavel($1.label);
 
@@ -134,8 +145,9 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
 
                     $$.traducao = $3.traducao;
 
-                    if (var->tipo == TIPO_STRING) { // ISSO NÃO PODE, TEMOS QUE MUDAR ISSO
-                        $$.traducao += var->nomeFicticio + ".data = " + $3.label + ".data;\n";
+                    if (var->tipo == TIPO_STRING) {
+                        $$.traducao += var->nomeFicticio + ".data = (char*) malloc(sizeof(char) * " + $3.label + ".length);\n";
+                        $$.traducao += "strcpy(" + var->nomeFicticio + ".data, " + $3.label + ".data);\n";
                         $$.traducao += var->nomeFicticio + ".length = " + $3.label + ".length;\n";
                     } else {
                         $$.traducao += var->nomeFicticio + " = " + $3.label + ";\n";
@@ -145,10 +157,374 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
                     $$.tipo = $3.tipo;
                 }
 
+COMANDOS_CUSTOMIZADOS: TK_BREAK {
+                        compilador.debug("Comando BREAK");
+
+                        ControleFluxo* controleFluxo = compilador.getUltimoControleFluxo();
+
+                        if (controleFluxo == NULL) {
+                            yyerror("O comando BREAK não pode ser usado fora de um loop ou switch");
+                        }
+
+                        if (controleFluxo->isSwitch()) {
+                            $$.traducao = "goto " + controleFluxo->fimLabel + ";\n";
+                        } else {
+                            $$.traducao = "goto " + controleFluxo->fimLabel + ";\n";
+                        }
+                    }
+                    | TK_CONTINUE {
+                        compilador.debug("Comando CONTINUE");
+
+                        ControleFluxo* controleFluxo = compilador.getUltimoControleFluxo();
+
+                        if (controleFluxo == NULL) {
+                            yyerror("O comando CONTINUE não pode ser usado fora de um loop");
+                        }
+
+                        if (controleFluxo->isSwitch()) {
+                            yyerror("O comando CONTINUE não pode ser usado dentro de um switch");
+                        }
+
+                        $$.traducao = "goto " + controleFluxo->inicioLabel + ";\n";
+                    }
+                    | TK_SCANF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
+                        compilador.debug("Comando SCANF");
+
+                        $$.tipo = TIPO_STRING;
+                        $$.label = generateName();
+                        $$.traducao = $3.traducao;
+
+                        compilador.adicionarVariavel($$.label, $$.label, TIPO_STRING);
+
+                        $$.traducao += "scanf(\"" + $3.label + "\", " + $$.label + ".data);\n";
+                    }
+                    | TK_PRINTF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
+                        compilador.debug("Comando PRINTF");
+
+                        $$.tipo = $3.tipo;
+                        $$.label = $3.label;
+                        $$.traducao = $3.traducao;
+
+                        if ($3.tipo == TIPO_STRING) {
+                            $$.traducao += "printf(\"%s\", " + $3.label + ".data);\n";
+                        } else if ($3.tipo == TIPO_INT) {
+                            $$.traducao += "printf(\"%d\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_FLOAT) {
+                            $$.traducao += "printf(\"%f\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_BOOLEAN) {
+                            $$.traducao += "printf(\"%d\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_CHAR) {
+                            $$.traducao += "printf(\"%c\", " + $3.label + ");\n";
+                        } else {
+                            yyerror("O comando PRINTF não pode ser usado com o tipo " + $3.tipo);
+                        }
+                    }
+                    | TK_PRINTFLN TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
+                        compilador.debug("Comando PRINTFLN");
+
+                        $$.tipo = $3.tipo;
+                        $$.label = $3.label;
+                        $$.traducao = $3.traducao;
+
+                        if ($3.tipo == TIPO_STRING) {
+                            $$.traducao += "printf(\"%s\\n\", " + $3.label + ".data);\n";
+                        } else if ($3.tipo == TIPO_INT) {
+                            $$.traducao += "printf(\"%d\\n\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_FLOAT) {
+                            $$.traducao += "printf(\"%f\\n\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_BOOLEAN) {
+                            $$.traducao += "printf(\"%d\\n\", " + $3.label + ");\n";
+                        } else if ($3.tipo == TIPO_CHAR) {
+                            $$.traducao += "printf(\"%c\\n\", " + $3.label + ");\n";
+                        } else {
+                            yyerror("O comando PRINTFLN não pode ser usado com o tipo " + $3.tipo);
+                        }
+                    }
+
+INICIAR_WHILE: TK_WHILE {
+                compilador.adicionarControleFluxo();
+            }
+
+INICIAR_DO_WHILE: TK_DO {
+                compilador.adicionarControleFluxo();
+            }
+
+INICIAR_FOR: TK_FOR {
+                compilador.adicionarContexto();
+                compilador.adicionarControleFluxo();
+            }
+
+FOR_CONDICAO: EXPRESSAO {
+                if ($1.tipo != TIPO_BOOLEAN) {
+                    yyerror("A expressão lógica do FOR deve ser do tipo booleano");
+                }
+
+                $$ = $1;
+            }
+            | {
+                string temp = generateName();
+                compilador.adicionarVariavel(temp, temp, TIPO_BOOLEAN);
+
+                $$.label = temp;
+                $$.tipo = TIPO_BOOLEAN;
+                $$.traducao = temp + " = true;\n";
+            }
+
+INICIAR_FOR_ATRIBUICAO_OU_DECLARACAO : DECLARAR_VARIAVEL { $$.traducao = $1.traducao; }
+                                    | MULTIPLAS_ATRIBUICOES { $$.traducao = $1.traducao; }
+                                    | { $$.traducao = ""; }
+
+
+MULTIPLAS_ATRIBUICOES: ATRIBUIR_VARIAVEL {
+                        $$.traducao = $1.traducao;
+                    }
+                    | MULTIPLAS_ATRIBUICOES TK_COMMA ATRIBUIR_VARIAVEL {
+                        $$.traducao = $1.traducao + $3.traducao;
+                    }
+
+MULTIPLAS_EXPRESOES: EXPRESSAO {
+                        $$.traducao = $1.traducao;
+                    }
+                    | MULTIPLAS_EXPRESOES TK_COMMA EXPRESSAO {
+                        $$.traducao = $1.traducao + $3.traducao;
+                    }
+                    | { $$.traducao = ""; }
+
+INICIAR_SWITCH: TK_SWITCH TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
+                compilador.adicionarContexto();
+                compilador.adicionarControleFluxo($3.tipo);
+
+                if ($3.tipo == TIPO_STRING) {
+                    yyerror("O switch não pode ser usado com expressões do tipo string, por enquanto...");
+                }
+
+                $$.traducao = $3.traducao;
+                $$.label = $3.label;
+                $$.tipo = $3.tipo;
+            }
+
+CASO_SWITCH: TK_CASE LITERAIS TK_COLON COMMAND {
+                compilador.debug("Caso do switch");
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                if (!controleFluxo->isSwitch()) {
+                    yyerror("O comando CASE não pode ser usado fora de um switch");
+                }
+
+                if ($2.tipo != controleFluxo->switchType) {
+                    yyerror("O tipo da expressão do CASE não corresponde ao tipo do switch");
+                }
+
+                controleFluxo->adicionarCaso($2.label, $2.traducao, $4.traducao);
+            }
+            | TK_DEFAULT TK_COLON COMMAND {
+                compilador.debug("Caso default do switch");
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                if (!controleFluxo->isSwitch()) {
+                    yyerror("O comando DEFAULT não pode ser usado fora de um switch");
+                }
+
+                if (controleFluxo->hasCasoPadrao()) {
+                    yyerror("O switch não pode ter mais de um caso default");
+                }
+
+                controleFluxo->adicionarCaso("default", "", $3.traducao);
+            }
+
+VARIOS_CASOS_SWITCH: CASO_SWITCH {
+                $$.traducao = $1.traducao;
+            }
+            | VARIOS_CASOS_SWITCH CASO_SWITCH {
+                $$.traducao = $1.traducao + $2.traducao;
+            }
+
+CASOS_SWITCH: VARIOS_CASOS_SWITCH { $$ = $1; } | { }
+
+CONTROLE_FLUXO: TK_IF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS COMMAND %prec THEN {
+                compilador.debug("Controle de fluxo IF");
+
+                if ($3.tipo != TIPO_BOOLEAN) {
+                    yyerror("A expressão lógica do IF deve ser do tipo booleano");
+                }
+
+                string tempBool = generateName();
+                string ifLabel = generateLabel();
+
+                compilador.adicionarVariavel(tempBool, tempBool, TIPO_BOOLEAN);
+
+                $$.traducao = $3.traducao;
+                $$.traducao += tempBool + " = !(" + $3.label + ");\n";
+                $$.traducao += "if (" + tempBool + ") goto " + ifLabel + ";\n";
+                $$.traducao += $5.traducao;
+                $$.traducao += ifLabel + ": \n";
+            }
+            | TK_IF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS COMMAND TK_ELSE COMMAND {
+                compilador.debug("Controle de fluxo IF-ELSE");
+
+                if ($3.tipo != TIPO_BOOLEAN) {
+                    yyerror("A expressão lógica do IF deve ser do tipo booleano");
+                }
+
+                string tempBool = generateName();
+                string ifLabel = generateLabel();
+                string elseLabel = generateLabel();
+
+                compilador.adicionarVariavel(tempBool, tempBool, TIPO_BOOLEAN);
+
+                $$.traducao = $3.traducao;
+                $$.traducao += tempBool + " = !(" + $3.label + ");\n";
+                $$.traducao += "if (" + tempBool + ") goto " + elseLabel + ";\n";
+                $$.traducao += $5.traducao;
+                $$.traducao += "goto " + ifLabel + ";\n";
+                $$.traducao += elseLabel + ": \n";
+                $$.traducao += $7.traducao;
+                $$.traducao += ifLabel + ": \n";
+
+                $$.tipo = TIPO_BOOLEAN;
+                $$.label = tempBool;
+            }
+            | INICIAR_WHILE TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS COMMAND {
+                compilador.debug("Controle de fluxo WHILE");
+
+                if ($3.tipo != TIPO_BOOLEAN) {
+                    yyerror("A expressão lógica do WHILE deve ser do tipo booleano");
+                }
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                string tempBool = generateName();
+                string inicioWhileLabel = controleFluxo->inicioLabel;
+                string fimWhileLabel = controleFluxo->fimLabel;
+
+                compilador.adicionarVariavel(tempBool, tempBool, TIPO_BOOLEAN);
+
+                $$.traducao = inicioWhileLabel + ": \n";
+                $$.traducao += $3.traducao;
+                $$.traducao += tempBool + " = !(" + $3.label + ");\n";
+                $$.traducao += "if (" + tempBool + ") goto " + fimWhileLabel + ";\n";
+                $$.traducao += $5.traducao;
+                $$.traducao += "goto " + inicioWhileLabel + ";\n";
+                $$.traducao += fimWhileLabel + ": \n";
+
+                compilador.removerUltimoControleFluxo();
+            }
+            | INICIAR_DO_WHILE COMMAND TK_WHILE TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
+                compilador.debug("Controle de fluxo DO-WHILE");
+
+                if ($5.tipo != TIPO_BOOLEAN) {
+                    yyerror("A expressão lógica do DO-WHILE deve ser do tipo booleano");
+                }
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                string tempBool = generateName();
+                string inicioDoWhileLabel = controleFluxo->inicioLabel;
+                string fimDoWhileLabel = controleFluxo->fimLabel;
+
+                compilador.adicionarVariavel(tempBool, tempBool, TIPO_BOOLEAN);
+
+                $$.traducao = $2.traducao;
+                $$.traducao += inicioDoWhileLabel + ": \n";
+                $$.traducao += $5.traducao;
+                $$.traducao += tempBool + " = !(" + $5.label + "); \n";
+                $$.traducao += "if (" + tempBool + ") goto " + fimDoWhileLabel + ";\n";
+                $$.traducao += $2.traducao;
+                $$.traducao += "goto " + inicioDoWhileLabel + ";\n";
+                $$.traducao += fimDoWhileLabel + ": \n";
+
+                compilador.removerUltimoControleFluxo();
+            }
+            | INICIAR_FOR TK_OPEN_PARENTHESIS INICIAR_FOR_ATRIBUICAO_OU_DECLARACAO TK_SEMICOLON FOR_CONDICAO TK_SEMICOLON MULTIPLAS_EXPRESOES TK_CLOSE_PARENTHESIS COMMAND {
+                compilador.debug("Controle de fluxo FOR");
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                string tempBool = generateName();
+                string inicioForLabel = generateLabel();
+                string inicioVerificacaoLabel = controleFluxo->inicioLabel;
+                string fimForLabel = controleFluxo->fimLabel;
+
+                compilador.adicionarVariavel(tempBool, tempBool, TIPO_BOOLEAN);
+
+                $$.traducao = $3.traducao;
+                $$.traducao += inicioForLabel + ": \n";
+                $$.traducao += $5.traducao;
+                $$.traducao += tempBool + " = !(" + $5.label + "); \n";
+                $$.traducao += "if (" + tempBool + ") goto " + fimForLabel + ";\n";
+                $$.traducao += $9.traducao;
+                $$.traducao += inicioVerificacaoLabel + ":\n";
+                $$.traducao += $7.traducao;
+                $$.traducao += "goto " + inicioForLabel + ";\n";
+                $$.traducao += fimForLabel + ": \n";
+
+                compilador.removerUltimoControleFluxo();
+                compilador.removerUltimoContexto();
+            }
+            | INICIAR_SWITCH TK_OPEN_BRACE CASOS_SWITCH TK_CLOSE_BRACE {
+                compilador.debug("Controle de fluxo SWITCH");
+
+                auto controleFluxo = compilador.getUltimoControleFluxo();
+
+                if (!controleFluxo->isSwitch()) {
+                    yyerror("O comando SWITCH não pode ser usado fora de um switch");
+                }
+
+                if (!controleFluxo->hasPeloMenosUmCaso()) {
+                    yyerror("O switch precisa ter pelo menos um caso diferente do caso padrão");
+                }
+
+                $$.traducao = $1.traducao + $3.traducao;
+
+                string traducaoDosComandos = "";
+
+                for (auto it = controleFluxo->casos.begin(); it != controleFluxo->casos.end(); ++it) {
+                    CasoSwitch* caso = *it;
+
+                    if (caso->label == "default") {
+                        continue;
+                    }
+
+                    $$.traducao += caso->traducaoExpressao;
+
+                    string casoLabel = generateLabel();
+                    string label = generateName();
+
+                    compilador.adicionarVariavel(label, label, TIPO_BOOLEAN);
+
+                    $$.traducao += label + " = " + $1.label + " == " + caso->label + ";\n";
+                    $$.traducao += "if (" + label + ")\n";
+                    $$.traducao += "goto " + casoLabel + ";\n";
+
+                    traducaoDosComandos += casoLabel + ": \n";
+                    traducaoDosComandos += caso->traducaoComando;
+                }
+
+                for (CasoSwitch* caso : controleFluxo->casos) {
+                    if (caso->label != "default") {
+                        continue;
+                    }
+
+                    string defaultCasoLabel = generateLabel();
+
+                    $$.traducao += "goto " + defaultCasoLabel + ";\n";
+                    traducaoDosComandos += defaultCasoLabel + ": \n";
+                    traducaoDosComandos += caso->traducaoComando;
+                }
+
+                $$.traducao += traducaoDosComandos;
+                $$.traducao += controleFluxo->fimLabel + ": \n";
+
+                compilador.removerUltimoControleFluxo();
+            }
+
 // EXPRESSAO:  CONVERSAO_EXPLICITA { $$ = $1; }
 EXPRESSAO: OPERADORES_ARITMETICOS { $$ = $1; }
             | OPERADORES_LOGICOS { $$ = $1; }
             | OPERADORES_RELACIONAIS { $$ = $1; }
+            | ATRIBUIR_VARIAVEL { $$ = $1; }
             | LITERAIS { $$.traducao = $1.traducao; }
             | PRIMARIA { $$.traducao = $1.traducao; }
 
@@ -542,5 +918,5 @@ int main(int argc, char* argv[])
 
 int yyerror(string msg) {
     cout << "Erro: " << msg << endl;
-    return 0;
+    exit(1);
 }

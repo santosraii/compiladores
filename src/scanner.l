@@ -28,20 +28,30 @@ TYPES "int"|"float"|"bool"|"char"|"string"
 
 ";" { return TK_SEMICOLON; }
 ":" { return TK_COLON; }
+"," { return TK_COMMA; }
 
 "(" { return TK_OPEN_PARENTHESIS; }
 ")" { return TK_CLOSE_PARENTHESIS; }
+"{" { return TK_OPEN_BRACE; }
+"}" { return TK_CLOSE_BRACE; }
 
 "var" { return TK_VAR; }
 
 "do" { return TK_DO; }
 "while" { return TK_WHILE; }
 "for" { return TK_FOR; }
+"switch" { return TK_SWITCH; }
+"case" { return TK_CASE; }
+"default" { return TK_DEFAULT; }
 "continue" { return TK_CONTINUE; }
 "break" { return TK_BREAK; }
 
 "if" { return TK_IF; }
 "else" { return TK_ELSE; }
+
+"scanf" { return TK_SCANF; }
+"printf" { return TK_PRINTF; }
+"printfln" { return TK_PRINTFLN; }
 
 "return" { return TK_RETURN; }
 
