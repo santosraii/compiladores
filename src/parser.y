@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include "../src/compiler.h"
+#include <map>
 
 using namespace std;
 using namespace compiler;
@@ -18,12 +19,11 @@ Compilador compilador = Compilador();
 #define YYSTYPE Atributo
 
 int yylex(void);
-int yyerror(string msg);
 %}
 
 %token TK_SEMICOLON TK_COLON TK_COMMA TK_OPEN_PARENTHESIS TK_CLOSE_PARENTHESIS TK_OPEN_BRACE TK_CLOSE_BRACE
 %token TK_VAR TK_DO TK_WHILE TK_FOR TK_SWITCH TK_CASE TK_DEFAULT TK_CONTINUE TK_BREAK TK_IF
-%token TK_ELSE TK_RETURN TK_AND TK_OR TK_NOT TK_PLUS TK_MINUS TK_MULT TK_SCANF TK_PRINTF TK_PRINTFLN
+%token TK_ELSE TK_RETURN TK_FUNCTION TK_ARROW TK_AND TK_OR TK_NOT TK_PLUS TK_MINUS TK_MULT TK_SCANF TK_PRINTF TK_PRINTFLN
 %token TK_DIV TK_MOD TK_EQ TK_NE TK_ASSIGN TK_GT TK_LT TK_GE TK_LE
 %token TK_DOT TK_TYPE TK_STRING TK_CHAR TK_NUM TK_REAL TK_BOOLEAN TK_ID
 
@@ -62,13 +62,12 @@ COMMAND: CRIAR_CONTEXTO COMMANDS ENCERRAR_CONTEXTO {
             compilador.debug("Criando novo contexto a partir de um novo bloco de comandos");
             $$.traducao = $2.traducao;
         }
-        | DECLARAR_VARIAVEL PONTO_VIRGULA_OPCIONAL { $$ = $1; }
-        | ATRIBUIR_VARIAVEL PONTO_VIRGULA_OPCIONAL { $$ = $1; }
-        | COMANDOS_CUSTOMIZADOS PONTO_VIRGULA_OPCIONAL { $$ = $1; }
+        | DECLARAR_VARIAVEL TK_SEMICOLON { $$ = $1; }
+        | ATRIBUIR_VARIAVEL TK_SEMICOLON { $$ = $1; }
+        | COMANDOS_CUSTOMIZADOS TK_SEMICOLON { $$ = $1; }
+        | EXPRESSAO TK_SEMICOLON { $$ = $1; }
+        | DECLARAR_FUNCAO { $$ = $1; }
         | CONTROLE_FLUXO { $$ = $1; }
-
-PONTO_VIRGULA_OPCIONAL: TK_SEMICOLON { $$.traducao = ""; }
-                        | { $$.traducao = ""; }
 
 CRIAR_CONTEXTO: TK_OPEN_BRACE { compilador.debug("Criando contexto"); compilador.adicionarContexto(); }
 
@@ -81,6 +80,16 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
 
                     if (var != NULL) {
                         yyerror("A variável \"" + $2.label + "\" já foi declarada nesse contexto");
+                    }
+
+                    if (compilador.isCriandoFuncao()) {
+                        Funcao* funcao = compilador.getFuncaoAtual();
+
+                        Parametro* parametro = funcao->buscarParametro($2.label);
+
+                        if (parametro != NULL) {
+                            yyerror("Conflito de nome entre o parametro \"" + $2.label + "\" e a variável \"" + $2.label + "\" declarada nessa função");
+                        }
                     }
 
                     string nomeFicticio = generateName();
@@ -145,8 +154,18 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
 
                     auto var = compilador.buscarVariavel($1.label);
 
-                    if (var == NULL) {
-                        yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
+                    if (var == NULL && !compilador.isCriandoFuncao()) {
+                        if (compilador.isCriandoFuncao()) {
+                            Funcao* funcao = compilador.getFuncaoAtual();
+
+                            Parametro* parametro = funcao->buscarParametro($1.label);
+
+                            if (parametro == NULL) {
+                                yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
+                            }
+
+                            var = parametro->getVariavel();
+                        }
                     }
 
                     if (var->tipo != $3.tipo) {
@@ -170,6 +189,76 @@ ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
                     $$.label = $1.label;
                     $$.tipo = $3.tipo;
                 }
+
+INICIAR_DECLARACAO_FUNCAO: TK_FUNCTION TK_ID {
+            compilador.debug("Iniciando declaração de função " + $2.label);
+
+            if (compilador.isCriandoFuncao()) {
+                yyerror("Não é possível declarar uma função dentro de outra função");
+            }
+
+            Funcao* funcao = new Funcao($2.label, generateFuncaoName(), TIPO_VOID);
+
+            compilador.adicionarContexto();
+            compilador.setFuncaoAtual(funcao);
+        }
+
+TODOS_PARAMETROS_FUNCAO: TK_OPEN_PARENTHESIS PARAMETROS_FUNCAO TK_CLOSE_PARENTHESIS TK_ARROW TK_TYPE {
+            compilador.debug("Todos os parâmetros da função");
+
+            Funcao* funcao = compilador.getFuncaoAtual();
+
+            funcao->tipoRetorno = $5.label;
+        }
+        | TK_OPEN_PARENTHESIS PARAMETROS_FUNCAO TK_CLOSE_PARENTHESIS {
+            Funcao* funcao = compilador.getFuncaoAtual();
+            
+            funcao->tipoRetorno = TIPO_VOID;
+        }
+
+PARAMETROS_FUNCAO: PARAMETRO_FUNCAO {}
+        | PARAMETROS_FUNCAO TK_COMMA PARAMETRO_FUNCAO {}
+
+PARAMETRO_FUNCAO: TK_TYPE TK_ID {
+            Funcao* funcao = compilador.getFuncaoAtual();
+            
+            funcao->adicionarParametro($2.label, $1.label);
+            
+            $$.traducao = $2.traducao;
+        }
+
+CORPO_FUNCAO: TK_OPEN_BRACE COMMANDS TK_CLOSE_BRACE {
+            compilador.debug("Corpo da função");
+            
+            Funcao* funcao = compilador.getFuncaoAtual();
+            
+            funcao->traducaoCorpo = $2.traducao;
+        }
+
+DECLARAR_FUNCAO: INICIAR_DECLARACAO_FUNCAO TODOS_PARAMETROS_FUNCAO CORPO_FUNCAO {
+            compilador.debug("Declarando função " + $2.label);
+
+            Funcao* funcao = compilador.getFuncaoAtual();
+            Contexto* contexto = compilador.getContextoAtual();
+
+            if (funcao->tipoRetorno != TIPO_VOID) {
+                if (!contexto->isRetornando()) {
+                    yyerror("A função " + funcao->name + " espera um valor de retorno, mas em seu corpo não há um comando de retorno");
+                }
+
+                if (contexto->tipoRetorno != funcao->tipoRetorno) {
+                    if (compilador.isArithmetic(contexto->tipoRetorno) && compilador.isArithmetic(funcao->tipoRetorno)) {
+                        yyerror("A função " + funcao->name + " espera um valor de retorno do tipo " + funcao->tipoRetorno + ", mas o valor retornado é do tipo " + contexto->tipoRetorno + ". Para o caso específico de tipos aritméticos, o valor retornado precisará ser explicitamente convertido para o tipo esperado da função (" + funcao->tipoRetorno + ")");
+                    } else {
+                        yyerror("A função " + funcao->name + " espera um valor de retorno do tipo " + funcao->tipoRetorno + ", mas o valor retornado é do tipo " + contexto->tipoRetorno);
+                    }
+                }
+            }
+
+            compilador.adicionarFuncao(funcao);
+            compilador.setFuncaoAtual(NULL);
+            compilador.removerUltimoContexto();
+        }
 
 COMANDOS_CUSTOMIZADOS: TK_BREAK {
                         compilador.debug("Comando BREAK");
@@ -200,6 +289,41 @@ COMANDOS_CUSTOMIZADOS: TK_BREAK {
                         }
 
                         $$.traducao = "goto " + controleFluxo->inicioLabel + ";\n";
+                    }
+                    | TK_RETURN {
+                        compilador.debug("Comando RETURN");
+
+                        Funcao* funcao = compilador.getFuncaoAtual();
+
+                        if (funcao == NULL) {
+                            yyerror("O comando RETURN não pode ser usado fora de uma função");
+                        }
+
+                        if (funcao->tipoRetorno != TIPO_VOID) {
+                            yyerror("A função " + funcao->name + " espera um valor de retorno do tipo " + funcao->tipoRetorno + ", mas o comando de retorno atual não retorna nenhum valor");
+                        }
+
+                        $$.traducao = "return;\n";
+                    }
+                    | TK_RETURN EXPRESSAO {
+                        compilador.debug("Comando RETURN");
+
+                        Funcao* funcao = compilador.getFuncaoAtual();
+
+                        if (funcao == NULL) {
+                            yyerror("O comando RETURN não pode ser usado fora de uma função");
+                        }
+
+                        if (funcao->tipoRetorno != TIPO_VOID && funcao->tipoRetorno != $2.tipo) {
+                            yyerror("O tipo de retorno da função (" + funcao->tipoRetorno + ") não corresponde ao tipo da expressão (" + $2.tipo + ")");
+                        }
+
+                        Contexto* contexto = compilador.getContextoAtual();
+
+                        contexto->tipoRetorno = $2.tipo;
+
+                        $$.traducao = $2.traducao;
+                        $$.traducao += "return " + $2.label + ";\n";
                     }
                     | TK_SCANF TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
                         compilador.debug("Comando SCANF");
@@ -604,10 +728,175 @@ EXPRESSAO: CONVERSAO_EXPLICITA { $$ = $1; }
             | OPERADORES_ARITMETICOS { $$ = $1; }
             | OPERADORES_LOGICOS { $$ = $1; }
             | OPERADORES_RELACIONAIS { $$ = $1; }
-            | ATRIBUIR_VARIAVEL { $$ = $1; }
             | LITERAIS { $$.traducao = $1.traducao; }
-            | PRIMARIA { $$.traducao = $1.traducao; }
             | TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS { $$ = $2; }
+            | CHAMADA_FUNCAO { $$.traducao = $1.traducao; }
+            | PRIMARIA { $$.traducao = $1.traducao; }
+
+CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS {
+                compilador.debug("Chamando função");
+
+                Funcao* funcao = compilador.buscarFuncao($1.label);
+
+                if (funcao == NULL) {
+                    yyerror("Função " + $1.label + " não encontrada");
+                }
+
+                // O cout abaixo era para debug, pode ser removido ou mantido se desejar.
+                // cout << "label completo: " << $3.label << " tipo completo: " << $3.tipo << endl;
+
+                // Divide os argumentos por ';' para separar nomeados de posicionais
+                vector<string> argumentos_partes = split($3.label, ";");
+                vector<string> tipos_partes = split($3.tipo, ";");
+
+                // Argumentos por nome estão na primeira parte (antes do ';')
+                vector<string> argumentosPorNome = split(argumentos_partes[0], ",");
+                vector<string> argumentosTiposPorNome = split(tipos_partes[0], ",");
+
+                // Argumentos por posição estão na segunda parte (depois do ';')
+                // Verifica se há uma segunda parte antes de tentar acessá-la
+                vector<string> argumentosPorPosicao;
+                vector<string> argumentosTiposPorPosicao;
+                if (argumentos_partes.size() > 1) {
+                    argumentosPorPosicao = split(argumentos_partes[1], ",");
+                    argumentosTiposPorPosicao = split(tipos_partes[1], ",");
+                }
+
+
+                int totalArgumentos = argumentosPorNome.size() + argumentosPorPosicao.size();
+
+                if (totalArgumentos != funcao->parametros.size()) {
+                    yyerror("A função " + funcao->name + " espera " + to_string(funcao->parametros.size()) + " argumento(s), mas foi(ram) passado(s) " + to_string(totalArgumentos) + " argumento(s)");
+                }
+
+                // Mapa para armazenar os argumentos reais (seus labels) na ordem correta,
+                // indexados pelo nome do parâmetro.
+                map<string, string> argumentosMapeados;
+
+                // Processar argumentos por nome
+                for (size_t i = 0; i < argumentosPorNome.size(); ++i) { // Use size_t para loops com .size()
+                    string argumentoNome = argumentosPorNome[i];
+                    string argumentoTipo = argumentosTiposPorNome[i];
+                    bool encontrado = false;
+                    for (Parametro* parametro : funcao->parametros) {
+                        if (parametro->nome == argumentoNome) {
+                            if (parametro->tipo != argumentoTipo) {
+                                yyerror("O tipo do argumento nomeado '" + argumentoNome + "' (" + argumentoTipo + ") não corresponde ao tipo do parâmetro '" + parametro->nome + "' (" + parametro->tipo + ") na função " + funcao->name);
+                            }
+                            argumentosMapeados[argumentoNome] = argumentoNome; // O label do argumento nomeado é o próprio nome
+                            encontrado = true;
+                            break;
+                        }
+                    }
+                    if (!encontrado) {
+                        yyerror("O argumento nomeado '" + argumentoNome + "' não é um parâmetro da função " + funcao->name);
+                    }
+                }
+
+                // Processar argumentos por posição
+                int idxPosicional = 0;
+                for (Parametro* parametro : funcao->parametros) {
+                    // Se o parâmetro ainda não foi preenchido por um argumento nomeado
+                    if (argumentosMapeados.find(parametro->nome) == argumentosMapeados.end()) {
+                        if (idxPosicional >= argumentosPorPosicao.size()) {
+                            yyerror("Argumento posicional faltando para o parâmetro '" + parametro->nome + "' na função " + funcao->name);
+                        }
+                        string argumentoValor = argumentosPorPosicao[idxPosicional];
+                        string argumentoTipo = argumentosTiposPorPosicao[idxPosicional];
+
+                        if (parametro->tipo != argumentoTipo) {
+                            yyerror("O tipo do argumento posicional '" + argumentoValor + "' (" + argumentoTipo + ") não corresponde ao tipo do parâmetro '" + parametro->nome + "' (" + parametro->tipo + ") na função " + funcao->name);
+                        }
+                        argumentosMapeados[parametro->nome] = argumentoValor;
+                        idxPosicional++;
+                    }
+                }
+                
+                // Verifica se sobraram argumentos posicionais não utilizados
+                if (idxPosicional < argumentosPorPosicao.size()) {
+                    yyerror("Número excessivo de argumentos posicionais passados para a função " + funcao->name);
+                }
+
+
+                string temp = generateName();
+                compilador.adicionarVariavel(temp, temp, funcao->tipoRetorno);
+
+                $$.traducao = $3.traducao;
+                $$.traducao += temp + " = " + funcao->nomeFicticio + "(";
+
+                // Adicionar argumentos na ordem correta dos parâmetros (definida em funcao->parametros)
+                auto it = funcao->parametros.begin();
+                for (size_t i = 0; i < funcao->parametros.size(); ++i) {
+                    Parametro* parametro = *it; // Desreferencia o iterador para obter o ponteiro Parametro*
+                    $$.traducao += argumentosMapeados[parametro->nome];
+                    if (i < funcao->parametros.size() - 1) {
+                        $$.traducao += ", ";
+                    }
+                    ++it; // Avança para o próximo elemento da lista
+                }
+                $$.traducao += ");\n";
+
+                $$.tipo = funcao->tipoRetorno;
+                $$.label = temp;
+            }
+
+LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_SEMICOLON LISTA_ARGUMENTOS_POR_POSICAO {
+                    $$.label = $1.label + ";" + $3.label;
+                    $$.tipo = $1.tipo + ";" + $3.tipo;
+                    $$.traducao = $1.traducao + $3.traducao;
+                }
+                | LISTA_ARGUMENTOS_POR_NOME {
+                    $$.label = $1.label + ";";
+                    $$.tipo = $1.tipo + ";";
+                    $$.traducao = $1.traducao;
+                }
+                | LISTA_ARGUMENTOS_POR_POSICAO {
+                    $$.label = ";" + $1.label;
+                    $$.tipo = ";" + $1.tipo;
+                    $$.traducao = $1.traducao;
+                }
+                | {
+                    $$.label = ";";
+                    $$.tipo = ";";
+                }
+
+LISTA_ARGUMENTOS_POR_NOME: ARGUMENTO_POR_NOME {
+                                $$.label = $1.label;
+                                $$.tipo = $1.tipo;
+                                $$.traducao = $1.traducao;
+                            }
+                            | LISTA_ARGUMENTOS_POR_NOME TK_COMMA ARGUMENTO_POR_NOME {
+                                $$.label = $1.label + "," + $3.label;
+                                $$.tipo = $1.tipo + "," + $3.tipo;
+                                $$.traducao = $1.traducao + $3.traducao;
+                            }
+
+ARGUMENTO_POR_NOME: TK_ID TK_ASSIGN EXPRESSAO %prec TK_ASSIGN {
+                        compilador.debug("Passando argumento por nome " + $1.label + " (" + $3.tipo + ")");
+
+                        $$.tipo = $3.tipo;
+                        $$.label = $3.label;
+                        $$.traducao = $3.traducao;
+                    }
+
+LISTA_ARGUMENTOS_POR_POSICAO: ARGUMENTO_POR_POSICAO {
+                                $$.label = $1.label;
+                                $$.tipo = $1.tipo;
+                                $$.traducao = $1.traducao;
+                            }
+                            | LISTA_ARGUMENTOS_POR_POSICAO TK_COMMA ARGUMENTO_POR_POSICAO {
+                                $$.label = $1.label + "," + $3.label;
+                                $$.tipo = $1.tipo + "," + $3.tipo;
+                                $$.traducao = $1.traducao + $3.traducao;
+                            }
+
+ARGUMENTO_POR_POSICAO: EXPRESSAO {
+                        compilador.debug("Passando argumento por posição " + $1.label + " (" + $1.tipo + ")");
+
+                        $$.tipo = $1.tipo;
+                        $$.label = $1.label;
+                        $$.traducao = $1.traducao;
+                    }
 
 CONVERSAO_EXPLICITA: TK_OPEN_PARENTHESIS TK_TYPE TK_CLOSE_PARENTHESIS EXPRESSAO {
                         compilador.debug("Convertendo expressão " + $4.label + " para tipo " + $2.label);
@@ -814,36 +1103,108 @@ OPERADORES_ARITMETICOS: EXPRESSAO TK_PLUS EXPRESSAO {
                         $$.tipo = $1.tipo;
                         $$.label = nomeFicticio;
                     }
+                    | TK_MINUS EXPRESSAO {
+                        compilador.debug("Negando expressão " + $2.label + " (" + $2.tipo + ")");
+                        
+                        if (!compilador.isArithmetic($2.tipo)) {
+                            yyerror("Operadores aritméticos só podem ser aplicados a tipos numéricos");
+                        }
+
+                        string nomeFicticio = generateName();
+
+                        compilador.adicionarVariavel(nomeFicticio, nomeFicticio, $2.tipo);
+
+                        $$.traducao = $2.traducao;
+                        $$.traducao += nomeFicticio + " = -" + $2.label + ";\n";
+                        $$.tipo = $2.tipo;
+                        $$.label = nomeFicticio;
+                    }
+                    | TK_PLUS EXPRESSAO {
+                        compilador.debug("Operador unário mais");
+                        
+                        if (!compilador.isArithmetic($2.tipo)) {
+                            yyerror("Operadores aritméticos só podem ser aplicados a tipos numéricos");
+                        }
+
+                        string nomeFicticio = generateName();
+
+                        compilador.adicionarVariavel(nomeFicticio, nomeFicticio, $2.tipo);
+
+                        $$.traducao = $2.traducao;
+                        $$.traducao += nomeFicticio + " = " + $2.label + ";\n";
+                        $$.tipo = $2.tipo;
+                        $$.label = nomeFicticio;
+                    }
 
 OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                         compilador.debug("Comparando expressão " + $1.label + " (" + $1.tipo + ") com expressão " + $3.label + " (" + $3.tipo + ")");
                         
-                        if ($1.tipo != $3.tipo) {
-                            yyerror("Operadores relacionais só podem ser aplicados a tipos iguais");
+                        if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
+                            yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
+                        }
+
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
                         }
 
                         string nomeFicticio = generateName();
 
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " == " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " == " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
                     | EXPRESSAO TK_NE EXPRESSAO {
                         compilador.debug("Comparando expressão " + $1.label + " (" + $1.tipo + ") com expressão " + $3.label + " (" + $3.tipo + ")");
 
-                        if ($1.tipo != $3.tipo) {
-                            yyerror("Operadores relacionais só podem ser aplicados a tipos iguais");
+                        if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
+                            yyerror("Esse operador relacional só pode ser aplicado a tipos numéricos");
+                        }
+                        
+                        string temp1 = $1.label;
+                        string temp2 = $3.label;
+
+                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+
+                        if ($1.tipo != tipoFinal) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                            temp1 = temp1Name;
+                        }
+
+                        if ($3.tipo != tipoFinal) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                            temp2 = temp2Name;
                         }
 
                         string nomeFicticio = generateName();
                         
                         compilador.adicionarVariavel(nomeFicticio, nomeFicticio, TIPO_BOOLEAN);
 
-                        $$.traducao = $1.traducao + $3.traducao;
-                        $$.traducao += nomeFicticio + " = " + $1.label + " != " + $3.label + ";\n";
+                        $$.traducao += nomeFicticio + " = " + temp1 + " != " + temp2 + ";\n";
                         $$.tipo = TIPO_BOOLEAN;
                         $$.label = nomeFicticio;
                     }
@@ -1095,10 +1456,24 @@ LITERAIS: TK_NUM {
 
 PRIMARIA: TK_ID {
             compilador.debug("Buscando variável " + $1.label);
-            auto var = compilador.buscarVariavel($1.label);
+
+            Funcao* funcao = compilador.getFuncaoAtual();
+            Variavel* var = NULL;
+
+            if (funcao != NULL) {
+                Parametro* parametro = funcao->buscarParametro($1.label);
+
+                if (parametro != NULL) {
+                    var = parametro->getVariavel();
+                }
+            }
 
             if (var == NULL) {
-                yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
+                var = compilador.buscarVariavel($1.label);
+
+                if (var == NULL) {
+                    yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
+                }
             }
 
             $$.label = var->nomeFicticio;
@@ -1114,9 +1489,4 @@ int main(int argc, char* argv[])
 {
 	yyparse();
 	return 0;
-}
-
-int yyerror(string msg) {
-    cout << "Erro: " << msg << endl;
-    exit(1);
 }

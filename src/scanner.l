@@ -53,6 +53,8 @@ TYPES "int"|"float"|"bool"|"char"|"string"
 "printf" { return TK_PRINTF; }
 "printfln" { return TK_PRINTFLN; }
 
+"func" { return TK_FUNCTION; }
+"->" { return TK_ARROW; }
 "return" { return TK_RETURN; }
 
 "and" { return TK_AND; }
