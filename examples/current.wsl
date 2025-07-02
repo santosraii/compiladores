@@ -1,14 +1,10 @@
 var z = 1;
 var a = z;
 
-func asd(bool a) -> int {
+func asd(bool a) {
     if (a) {
         return 1;
     }
 
     return 0;
 }
-
-var b = asd(true);
-
-printf(b);

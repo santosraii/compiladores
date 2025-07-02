@@ -241,7 +241,11 @@ DECLARAR_FUNCAO: INICIAR_DECLARACAO_FUNCAO TODOS_PARAMETROS_FUNCAO CORPO_FUNCAO 
             Funcao* funcao = compilador.getFuncaoAtual();
             Contexto* contexto = compilador.getContextoAtual();
 
-            if (funcao->tipoRetorno != TIPO_VOID) {
+            if (funcao->tipoRetorno == TIPO_VOID) {
+                if (contexto->isRetornando()) {
+                    yyerror("A função " + funcao->name + " não espera um valor de retorno, mas há um valor sendo retornado que é do tipo " + contexto->tipoRetorno);
+                }
+            } else {
                 if (!contexto->isRetornando()) {
                     yyerror("A função " + funcao->name + " espera um valor de retorno, mas em seu corpo não há um comando de retorno");
                 }
