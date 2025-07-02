@@ -776,14 +776,11 @@ EXPRESSAO: CONVERSAO_EXPLICITA { $$ = $1; }
 OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                     compilador.debug("Atribuição de variável");
                     
-                    if ($1.tipo != $3.tipo) {
+                    if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
                         yyerror("Os tipos das expressões não correspondem");
                     }
 
-                    if (!compilador.isArithmetic($1.tipo)) {
-                        yyerror("O operador + não pode ser usado com o tipo " + $1.tipo);
-                    }
-
+                    string label3 = $3.label;
                     string temp = generateName();
                     string temp2 = generateName();
 
@@ -791,7 +788,16 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                     compilador.adicionarVariavel(temp2, temp2, $1.tipo);
 
                     $$.traducao = $1.traducao + $3.traducao;
-                    $$.traducao += temp + " = " + $1.label + " + " + $3.label + ";\n";
+                    
+                    if ($3.tipo == $1.tipo) {
+                        label3 = $3.label;
+                    } else {
+                        label3 = generateName();
+                        $$.traducao += label3 + " = (" + $1.tipo + ")" + $3.label + ";\n";
+                        compilador.adicionarVariavel(label3, label3, $1.tipo);
+                    }
+
+                    $$.traducao += temp + " = " + $1.label + " + " + label3 + ";\n";
                     $$.traducao += $1.label + " = " + temp + ";\n";
 
                     $$.tipo = $1.tipo;
@@ -800,22 +806,28 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                 | EXPRESSAO TK_MINUS_ASSIGN EXPRESSAO {
                     compilador.debug("Atribuição de variável");
                     
-                    if ($1.tipo != $3.tipo) {
+                    if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
                         yyerror("Os tipos das expressões não correspondem");
-                    }
-
-                    if (!compilador.isArithmetic($1.tipo)) {
-                        yyerror("O operador - não pode ser usado com o tipo " + $1.tipo);
                     }
 
                     string temp = generateName();
                     string temp2 = generateName();
+                    string label3 = $3.label;
 
                     compilador.adicionarVariavel(temp, temp, $1.tipo);
                     compilador.adicionarVariavel(temp2, temp2, $1.tipo);
 
                     $$.traducao = $1.traducao + $3.traducao;
-                    $$.traducao += temp + " = " + $1.label + " - " + $3.label + ";\n";
+
+                    if ($3.tipo == $1.tipo) {
+                        label3 = $3.label;
+                    } else {
+                        label3 = generateName();
+                        $$.traducao += label3 + " = (" + $1.tipo + ")" + $3.label + ";\n";
+                        compilador.adicionarVariavel(label3, label3, $1.tipo);
+                    }
+
+                    $$.traducao += temp + " = " + $1.label + " - " + label3 + ";\n";
                     $$.traducao += $1.label + " = " + temp + ";\n";
 
                     $$.tipo = $1.tipo;
@@ -824,14 +836,11 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                 | EXPRESSAO TK_MULT_ASSIGN EXPRESSAO {
                     compilador.debug("Atribuição de variável");
                     
-                    if ($1.tipo != $3.tipo) {
+                    if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
                         yyerror("Os tipos das expressões não correspondem");
                     }
 
-                    if (!compilador.isArithmetic($1.tipo)) {
-                        yyerror("O operador * não pode ser usado com o tipo " + $1.tipo);
-                    }
-
+                    string label3 = $3.label;
                     string temp = generateName();
                     string temp2 = generateName();
 
@@ -839,7 +848,18 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                     compilador.adicionarVariavel(temp2, temp2, $1.tipo);
 
                     $$.traducao = $1.traducao + $3.traducao;
-                    $$.traducao += temp + " = " + $1.label + " * " + $3.label + ";\n";
+
+                    if ($3.tipo == $1.tipo) {
+                        label3 = $3.label;
+                    } else {
+                        label3 = generateName();
+
+                        compilador.adicionarVariavel(label3, label3, $1.tipo);
+
+                        $$.traducao += label3 + " = (" + $1.tipo + ")" + $3.label + ";\n";
+                    }
+
+                    $$.traducao += temp + " = " + $1.label + " * " + label3 + ";\n";
                     $$.traducao += $1.label + " = " + temp + ";\n";
 
                     $$.tipo = $1.tipo;
