@@ -276,9 +276,9 @@ COMANDOS_CUSTOMIZADOS: TK_BREAK {
                         }
 
                         if (controleFluxo->isSwitch()) {
-                            $$.traducao = "goto " + controleFluxo->fimLabel + ";\n";
+                            $$.traducao = "/* break */goto " + controleFluxo->fimLabel + ";\n";
                         } else {
-                            $$.traducao = "goto " + controleFluxo->fimLabel + ";\n";
+                            $$.traducao = "/* break */goto " + controleFluxo->fimLabel + ";\n";
                         }
                     }
                     | TK_CONTINUE {
@@ -294,7 +294,7 @@ COMANDOS_CUSTOMIZADOS: TK_BREAK {
                             yyerror("O comando CONTINUE não pode ser usado dentro de um switch");
                         }
 
-                        $$.traducao = "goto " + controleFluxo->inicioLabel + ";\n";
+                        $$.traducao = "/* continue */goto " + controleFluxo->inicioLabel + ";\n";
                     }
                     | TK_RETURN {
                         compilador.debug("Comando RETURN");
@@ -788,7 +788,7 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                     compilador.adicionarVariavel(temp2, temp2, $1.tipo);
 
                     $$.traducao = $1.traducao + $3.traducao;
-                    
+
                     if ($3.tipo == $1.tipo) {
                         label3 = $3.label;
                     } else {
@@ -840,7 +840,7 @@ OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
                         yyerror("Os tipos das expressões não correspondem");
                     }
 
-                    string label3 = $3.label;
+                string label3 = $3.label;
                     string temp = generateName();
                     string temp2 = generateName();
 
@@ -1393,6 +1393,7 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                         string temp2 = $3.label;
 
                         string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
 
                         if ($1.tipo != tipoFinal) {
                             string temp1Name = generateName();
@@ -1429,6 +1430,7 @@ OPERADORES_RELACIONAIS: EXPRESSAO TK_EQ EXPRESSAO {
                         string temp2 = $3.label;
 
                         string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        $$.traducao = $1.traducao + $3.traducao;
 
                         if ($1.tipo != tipoFinal) {
                             string temp1Name = generateName();
