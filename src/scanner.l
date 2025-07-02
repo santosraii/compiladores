@@ -66,6 +66,11 @@ TYPES "int"|"float"|"bool"|"char"|"string"
 "*" { return TK_MULT; }
 "/" { return TK_DIV; }
 "%" { return TK_MOD; }
+"+=" { return TK_PLUS_ASSIGN; }
+"-=" { return TK_MINUS_ASSIGN; }
+"*=" { return TK_MULT_ASSIGN; }
+"/=" { return TK_DIV_ASSIGN; }
+"%=" { return TK_MOD_ASSIGN; }
 "**" { return TK_POW; }
 "==" { return TK_EQ; }
 "!=" { return TK_NE; }

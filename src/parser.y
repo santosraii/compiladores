@@ -26,10 +26,11 @@ int yylex(void);
 %token TK_ELSE TK_RETURN TK_FUNCTION TK_ARROW TK_AND TK_OR TK_NOT TK_PLUS TK_MINUS TK_MULT TK_SCANF TK_PRINTF TK_PRINTFLN
 %token TK_DIV TK_MOD TK_EQ TK_NE TK_ASSIGN TK_GT TK_LT TK_GE TK_LE
 %token TK_DOT TK_TYPE TK_STRING TK_CHAR TK_NUM TK_REAL TK_BOOLEAN TK_ID
+%token TK_PLUS_ASSIGN TK_MINUS_ASSIGN TK_MULT_ASSIGN TK_DIV_ASSIGN TK_MOD_ASSIGN TK_POW_ASSIGN
 
 %start START
 
-%right TK_ASSIGN
+%right TK_ASSIGN TK_PLUS_ASSIGN TK_MINUS_ASSIGN TK_MULT_ASSIGN TK_DIV_ASSIGN TK_MOD_ASSIGN
 
 %left TK_AND
 %left TK_OR
@@ -766,10 +767,145 @@ EXPRESSAO: CONVERSAO_EXPLICITA { $$ = $1; }
             | OPERADORES_ARITMETICOS { $$ = $1; }
             | OPERADORES_LOGICOS { $$ = $1; }
             | OPERADORES_RELACIONAIS { $$ = $1; }
+            | OPERADORES_COMPOSTOS { $$ = $1; }
             | LITERAIS { $$.traducao = $1.traducao; }
             | TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS { $$ = $2; }
             | CHAMADA_FUNCAO { $$.traducao = $1.traducao; }
             | PRIMARIA { $$.traducao = $1.traducao; }
+
+OPERADORES_COMPOSTOS: EXPRESSAO TK_PLUS_ASSIGN EXPRESSAO {
+                    compilador.debug("Atribuição de variável");
+                    
+                    if ($1.tipo != $3.tipo) {
+                        yyerror("Os tipos das expressões não correspondem");
+                    }
+
+                    if (!compilador.isArithmetic($1.tipo)) {
+                        yyerror("O operador + não pode ser usado com o tipo " + $1.tipo);
+                    }
+
+                    string temp = generateName();
+                    string temp2 = generateName();
+
+                    compilador.adicionarVariavel(temp, temp, $1.tipo);
+                    compilador.adicionarVariavel(temp2, temp2, $1.tipo);
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    $$.traducao += temp + " = " + $1.label + " + " + $3.label + ";\n";
+                    $$.traducao += $1.label + " = " + temp + ";\n";
+
+                    $$.tipo = $1.tipo;
+                    $$.label = $1.label;
+                }
+                | EXPRESSAO TK_MINUS_ASSIGN EXPRESSAO {
+                    compilador.debug("Atribuição de variável");
+                    
+                    if ($1.tipo != $3.tipo) {
+                        yyerror("Os tipos das expressões não correspondem");
+                    }
+
+                    if (!compilador.isArithmetic($1.tipo)) {
+                        yyerror("O operador - não pode ser usado com o tipo " + $1.tipo);
+                    }
+
+                    string temp = generateName();
+                    string temp2 = generateName();
+
+                    compilador.adicionarVariavel(temp, temp, $1.tipo);
+                    compilador.adicionarVariavel(temp2, temp2, $1.tipo);
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    $$.traducao += temp + " = " + $1.label + " - " + $3.label + ";\n";
+                    $$.traducao += $1.label + " = " + temp + ";\n";
+
+                    $$.tipo = $1.tipo;
+                    $$.label = $1.label;
+                }
+                | EXPRESSAO TK_MULT_ASSIGN EXPRESSAO {
+                    compilador.debug("Atribuição de variável");
+                    
+                    if ($1.tipo != $3.tipo) {
+                        yyerror("Os tipos das expressões não correspondem");
+                    }
+
+                    if (!compilador.isArithmetic($1.tipo)) {
+                        yyerror("O operador * não pode ser usado com o tipo " + $1.tipo);
+                    }
+
+                    string temp = generateName();
+                    string temp2 = generateName();
+
+                    compilador.adicionarVariavel(temp, temp, $1.tipo);
+                    compilador.adicionarVariavel(temp2, temp2, $1.tipo);
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    $$.traducao += temp + " = " + $1.label + " * " + $3.label + ";\n";
+                    $$.traducao += $1.label + " = " + temp + ";\n";
+
+                    $$.tipo = $1.tipo;
+                    $$.label = $1.label;
+                }
+                | EXPRESSAO TK_DIV_ASSIGN EXPRESSAO {
+                    compilador.debug("Atribuição de variável");
+                    
+                    if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
+                        yyerror("Os tipos das expressões não correspondem");
+                    }
+
+                    if ($1.tipo != TIPO_FLOAT) {
+                        yyerror("O operador / não pode ser usado para atribuir valores a uma variável do tipo " + $1.tipo);
+                    }
+
+                    string temp1 = generateName();
+                    string temp2 = generateName();
+
+                    compilador.adicionarVariavel(temp1, temp1, TIPO_FLOAT);
+                    compilador.adicionarVariavel(temp2, temp2, TIPO_FLOAT);
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    
+                    if ($3.tipo == TIPO_INT) {
+                        $$.traducao += temp1 + " = (float)" + $3.label + ";\n";
+                    } else {
+                        $$.traducao += temp1 + " = " + $3.label + ";\n";
+                    }
+
+                    $$.traducao += temp2 + " = " + $1.label + " / " + temp1 + ";\n";
+                    $$.traducao += $1.label + " = " + temp2 + ";\n";
+
+                    $$.tipo = TIPO_FLOAT;
+                    $$.label = $1.label;
+                }
+                | EXPRESSAO TK_MOD_ASSIGN EXPRESSAO {
+                    compilador.debug("Atribuição de variável");
+                    
+                    if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
+                        yyerror("Os tipos das expressões não correspondem");
+                    }
+
+                    if ($1.tipo != TIPO_INT) {
+                        yyerror("O operador % não pode ser usado com o tipo " + $1.tipo);
+                    }
+
+                    string temp = generateName();
+                    string temp2 = generateName();
+
+                    compilador.adicionarVariavel(temp, temp, TIPO_INT);
+                    compilador.adicionarVariavel(temp2, temp2, TIPO_INT);
+
+                    if ($3.tipo == TIPO_INT) {
+                        $$.traducao += temp2 + " = " + $3.label + ";\n";
+                    } else {
+                        $$.traducao += temp2 + " = (int)" + $3.label + ";\n";
+                    }
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    $$.traducao += temp + " = " + $1.label + " % " + $3.label + ";\n";
+                    $$.traducao += $1.label + " = " + temp + ";\n";
+
+                    $$.tipo = TIPO_INT;
+                    $$.label = $1.label;
+                }
 
 CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS {
                 compilador.debug("Chamando função");
