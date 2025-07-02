@@ -218,13 +218,12 @@ TODOS_PARAMETROS_FUNCAO: TK_OPEN_PARENTHESIS PARAMETROS_FUNCAO TK_CLOSE_PARENTHE
 
 PARAMETROS_FUNCAO: PARAMETRO_FUNCAO {}
         | PARAMETROS_FUNCAO TK_COMMA PARAMETRO_FUNCAO {}
+        | {}
 
 PARAMETRO_FUNCAO: TK_TYPE TK_ID {
             Funcao* funcao = compilador.getFuncaoAtual();
             
             funcao->adicionarParametro($2.label, $1.label);
-            
-            $$.traducao = $2.traducao;
         }
 
 CORPO_FUNCAO: TK_OPEN_BRACE COMMANDS TK_CLOSE_BRACE {
@@ -262,6 +261,8 @@ DECLARAR_FUNCAO: INICIAR_DECLARACAO_FUNCAO TODOS_PARAMETROS_FUNCAO CORPO_FUNCAO 
             compilador.adicionarFuncao(funcao);
             compilador.setFuncaoAtual(NULL);
             compilador.removerUltimoContexto();
+
+            $$.traducao = "";
         }
 
 COMANDOS_CUSTOMIZADOS: TK_BREAK {
@@ -743,22 +744,15 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                 Funcao* funcao = compilador.buscarFuncao($1.label);
 
                 if (funcao == NULL) {
-                    yyerror("Função " + $1.label + " não encontrada");
+                    yyerror("Nenhuma função com o nome '" + $1.label + "' foi declarada");
                 }
 
-                // O cout abaixo era para debug, pode ser removido ou mantido se desejar.
-                // cout << "label completo: " << $3.label << " tipo completo: " << $3.tipo << endl;
-
-                // Divide os argumentos por ';' para separar nomeados de posicionais
                 vector<string> argumentos_partes = split($3.label, ";");
                 vector<string> tipos_partes = split($3.tipo, ";");
 
-                // Argumentos por nome estão na primeira parte (antes do ';')
                 vector<string> argumentosPorNome = split(argumentos_partes[0], ",");
                 vector<string> argumentosTiposPorNome = split(tipos_partes[0], ",");
 
-                // Argumentos por posição estão na segunda parte (depois do ';')
-                // Verifica se há uma segunda parte antes de tentar acessá-la
                 vector<string> argumentosPorPosicao;
                 vector<string> argumentosTiposPorPosicao;
                 if (argumentos_partes.size() > 1) {
@@ -766,19 +760,15 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                     argumentosTiposPorPosicao = split(tipos_partes[1], ",");
                 }
 
-
                 int totalArgumentos = argumentosPorNome.size() + argumentosPorPosicao.size();
 
                 if (totalArgumentos != funcao->parametros.size()) {
                     yyerror("A função " + funcao->name + " espera " + to_string(funcao->parametros.size()) + " argumento(s), mas foi(ram) passado(s) " + to_string(totalArgumentos) + " argumento(s)");
                 }
 
-                // Mapa para armazenar os argumentos reais (seus labels) na ordem correta,
-                // indexados pelo nome do parâmetro.
                 map<string, string> argumentosMapeados;
 
-                // Processar argumentos por nome
-                for (size_t i = 0; i < argumentosPorNome.size(); ++i) { // Use size_t para loops com .size()
+                for (size_t i = 0; i < argumentosPorNome.size(); ++i) { 
                     string argumentoNome = argumentosPorNome[i];
                     string argumentoTipo = argumentosTiposPorNome[i];
                     bool encontrado = false;
@@ -787,7 +777,7 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                             if (parametro->tipo != argumentoTipo) {
                                 yyerror("O tipo do argumento nomeado '" + argumentoNome + "' (" + argumentoTipo + ") não corresponde ao tipo do parâmetro '" + parametro->nome + "' (" + parametro->tipo + ") na função " + funcao->name);
                             }
-                            argumentosMapeados[argumentoNome] = argumentoNome; // O label do argumento nomeado é o próprio nome
+                            argumentosMapeados[argumentoNome] = argumentoNome;
                             encontrado = true;
                             break;
                         }
@@ -797,10 +787,8 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                     }
                 }
 
-                // Processar argumentos por posição
                 int idxPosicional = 0;
                 for (Parametro* parametro : funcao->parametros) {
-                    // Se o parâmetro ainda não foi preenchido por um argumento nomeado
                     if (argumentosMapeados.find(parametro->nome) == argumentosMapeados.end()) {
                         if (idxPosicional >= argumentosPorPosicao.size()) {
                             yyerror("Argumento posicional faltando para o parâmetro '" + parametro->nome + "' na função " + funcao->name);
@@ -816,32 +804,35 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                     }
                 }
                 
-                // Verifica se sobraram argumentos posicionais não utilizados
                 if (idxPosicional < argumentosPorPosicao.size()) {
                     yyerror("Número excessivo de argumentos posicionais passados para a função " + funcao->name);
                 }
 
-
-                string temp = generateName();
-                compilador.adicionarVariavel(temp, temp, funcao->tipoRetorno);
-
                 $$.traducao = $3.traducao;
-                $$.traducao += temp + " = " + funcao->nomeFicticio + "(";
 
-                // Adicionar argumentos na ordem correta dos parâmetros (definida em funcao->parametros)
+                if (funcao->tipoRetorno != TIPO_VOID) {
+                    string temp = generateName();
+
+                    compilador.adicionarVariavel(temp, temp, funcao->tipoRetorno);
+
+                    $$.traducao += temp + " = ";
+                    $$.label = temp;
+                }
+
+                $$.traducao += funcao->nomeFicticio + "(";
+                
                 auto it = funcao->parametros.begin();
                 for (size_t i = 0; i < funcao->parametros.size(); ++i) {
-                    Parametro* parametro = *it; // Desreferencia o iterador para obter o ponteiro Parametro*
+                    Parametro* parametro = *it;
                     $$.traducao += argumentosMapeados[parametro->nome];
                     if (i < funcao->parametros.size() - 1) {
                         $$.traducao += ", ";
                     }
-                    ++it; // Avança para o próximo elemento da lista
+                    ++it;
                 }
                 $$.traducao += ");\n";
 
                 $$.tipo = funcao->tipoRetorno;
-                $$.label = temp;
             }
 
 LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_SEMICOLON LISTA_ARGUMENTOS_POR_POSICAO {
@@ -862,6 +853,7 @@ LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_SEMICOLON LISTA_ARGUMENTOS_POR_PO
                 | {
                     $$.label = ";";
                     $$.tipo = ";";
+                    $$.traducao = "";
                 }
 
 LISTA_ARGUMENTOS_POR_NOME: ARGUMENTO_POR_NOME {
