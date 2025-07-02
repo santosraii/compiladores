@@ -982,39 +982,53 @@ CONVERSAO_EXPLICITA: TK_OPEN_PARENTHESIS TK_TYPE TK_CLOSE_PARENTHESIS EXPRESSAO 
 OPERADORES_ARITMETICOS: EXPRESSAO TK_PLUS EXPRESSAO {
                         compilador.debug("Somando expressão " + $1.label + " (" + $1.tipo + ") com expressão " + $3.label + " (" + $3.tipo + ")");
 
-                        if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
-                            yyerror("Operadores aritméticos só podem ser aplicados a tipos numéricos");
-                        }
-                        
                         $$.traducao = $1.traducao + $3.traducao;
 
-                        string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
+                        if (compilador.isArithmetic($1.tipo) && compilador.isArithmetic($3.tipo)) {
+                            string tipoFinal = $1.tipo == $3.tipo ? $1.tipo : TIPO_FLOAT;
 
-                        string nomeFicticio = generateName();
-                        compilador.adicionarVariavel(nomeFicticio, nomeFicticio, tipoFinal);
+                            string nomeFicticio = generateName();
+                            compilador.adicionarVariavel(nomeFicticio, nomeFicticio, tipoFinal);
 
-                        string temp1 = $1.label;
-                        string temp2 = $3.label;
+                            string temp1 = $1.label;
+                            string temp2 = $3.label;
 
-                        if ($1.tipo != tipoFinal) {
-                            string temp1Name = generateName();
-                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
-                            compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
-                            $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
-                            temp1 = temp1Name;
+                            if ($1.tipo != tipoFinal) {
+                                string temp1Name = generateName();
+                                compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + tipoFinal);
+                                compilador.adicionarVariavel(temp1Name, temp1Name, tipoFinal);
+                                $$.traducao += temp1Name + " = (float)" + $1.label + ";\n";
+                                temp1 = temp1Name;
+                            }
+
+                            if ($3.tipo != tipoFinal) {
+                                string temp2Name = generateName();
+                                compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
+                                compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
+                                $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
+                                temp2 = temp2Name;
+                            }
+                            
+                            $$.traducao += nomeFicticio + " = " + temp1 + " + " + temp2 + ";\n";
+                            $$.tipo = tipoFinal;
+                            $$.label = nomeFicticio;
+                        } else if ($1.tipo == TIPO_STRING || $3.tipo == TIPO_STRING) {
+                            string somaTamanho = generateName();
+                            string nomeString = generateName();
+
+                            compilador.adicionarVariavel(somaTamanho, somaTamanho, TIPO_INT);
+                            compilador.adicionarVariavel(nomeString, nomeString, TIPO_STRING);
+
+                            $$.traducao += somaTamanho + " = " + $1.label + ".length + " + $3.label + ".length;\n";
+                            $$.traducao += nomeString + ".length = " + somaTamanho + ";\n";
+                            $$.traducao += nomeString + ".data = (char*) malloc(" + somaTamanho + " + 1);\n";
+                            $$.traducao += "strcpy(" + nomeString + ".data, " + $1.label + ".data);\n";
+                            $$.traducao += "strcat(" + nomeString + ".data, " + $3.label + ".data);\n";
+                            $$.tipo = TIPO_STRING;
+                            $$.label = nomeString;
+                        } else {
+                            yyerror("Operadores aritméticos só podem ser aplicados a tipos numéricos ou strings");
                         }
-
-                        if ($3.tipo != tipoFinal) {
-                            string temp2Name = generateName();
-                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + tipoFinal);
-                            compilador.adicionarVariavel(temp2Name, temp2Name, tipoFinal);
-                            $$.traducao += temp2Name + " = (float)" + $3.label + ";\n";
-                            temp2 = temp2Name;
-                        }
-
-                        $$.traducao += nomeFicticio + " = " + temp1 + " + " + temp2 + ";\n";
-                        $$.tipo = tipoFinal;
-                        $$.label = nomeFicticio;
                     }
                     | EXPRESSAO TK_MINUS EXPRESSAO {
                         compilador.debug("Subtraindo expressão " + $1.label + " (" + $1.tipo + ") com expressão " + $3.label + " (" + $3.tipo + ")");
