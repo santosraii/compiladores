@@ -1,9 +1,6 @@
-var z = 1;
-var a = z;
-
-func soma_1(int a) -> int {
-    return a + 1;
+func soma_1(int a, int b) -> int {
+    return a + b;
 }
 
 
-soma_1(1);
+soma_1(a = 1, 2);

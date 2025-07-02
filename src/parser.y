@@ -769,25 +769,34 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                 map<string, string> argumentosMapeados;
 
                 for (size_t i = 0; i < argumentosPorNome.size(); ++i) { 
-                    string argumentoNome = argumentosPorNome[i];
+
+                    vector<string> argumento = split(argumentosPorNome[i], " = ");
+
+                    string argumentoNome = argumento[0];
+                    string argumentoValor = argumento[1];
+
                     string argumentoTipo = argumentosTiposPorNome[i];
                     bool encontrado = false;
+
                     for (Parametro* parametro : funcao->parametros) {
                         if (parametro->nome == argumentoNome) {
                             if (parametro->tipo != argumentoTipo) {
                                 yyerror("O tipo do argumento nomeado '" + argumentoNome + "' (" + argumentoTipo + ") não corresponde ao tipo do parâmetro '" + parametro->nome + "' (" + parametro->tipo + ") na função " + funcao->name);
                             }
-                            argumentosMapeados[argumentoNome] = argumentoNome;
+
+                            argumentosMapeados[parametro->nome] = argumentoValor;
                             encontrado = true;
                             break;
                         }
                     }
+
                     if (!encontrado) {
                         yyerror("O argumento nomeado '" + argumentoNome + "' não é um parâmetro da função " + funcao->name);
                     }
                 }
 
                 int idxPosicional = 0;
+
                 for (Parametro* parametro : funcao->parametros) {
                     if (argumentosMapeados.find(parametro->nome) == argumentosMapeados.end()) {
                         if (idxPosicional >= argumentosPorPosicao.size()) {
@@ -835,7 +844,7 @@ CHAMADA_FUNCAO: TK_ID TK_OPEN_PARENTHESIS LISTA_ARGUMENTOS TK_CLOSE_PARENTHESIS 
                 $$.tipo = funcao->tipoRetorno;
             }
 
-LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_SEMICOLON LISTA_ARGUMENTOS_POR_POSICAO {
+LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_COMMA LISTA_ARGUMENTOS_POR_POSICAO {
                     $$.label = $1.label + ";" + $3.label;
                     $$.tipo = $1.tipo + ";" + $3.tipo;
                     $$.traducao = $1.traducao + $3.traducao;
@@ -857,6 +866,8 @@ LISTA_ARGUMENTOS: LISTA_ARGUMENTOS_POR_NOME TK_SEMICOLON LISTA_ARGUMENTOS_POR_PO
                 }
 
 LISTA_ARGUMENTOS_POR_NOME: ARGUMENTO_POR_NOME {
+                                compilador.debug("Recebendo argumento por nome " + $1.label + " (" + $1.tipo + ")");
+
                                 $$.label = $1.label;
                                 $$.tipo = $1.tipo;
                                 $$.traducao = $1.traducao;
@@ -871,7 +882,7 @@ ARGUMENTO_POR_NOME: TK_ID TK_ASSIGN EXPRESSAO %prec TK_ASSIGN {
                         compilador.debug("Passando argumento por nome " + $1.label + " (" + $3.tipo + ")");
 
                         $$.tipo = $3.tipo;
-                        $$.label = $3.label;
+                        $$.label = $1.label + " = " + $3.label;
                         $$.traducao = $3.traducao;
                     }
 
