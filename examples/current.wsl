@@ -1,6 +1,3 @@
-func soma_1(int a, int b) -> int {
-    return a + b;
-}
+var a = 2 ** 2;
 
-
-soma_1(a = 1, 2);
+printfln(a);

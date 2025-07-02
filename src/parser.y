@@ -37,6 +37,7 @@ int yylex(void);
 
 %left TK_PLUS TK_MINUS
 %left TK_MULT TK_DIV TK_MOD
+%right TK_POW
 %right '.'
 
 %left TK_NOT
@@ -152,22 +153,21 @@ DECLARAR_VARIAVEL: TK_VAR TK_ID TK_ASSIGN EXPRESSAO {
 ATRIBUIR_VARIAVEL: TK_ID TK_ASSIGN EXPRESSAO {
                     compilador.debug("Atribuindo variável " + $1.label + " do tipo " + $3.tipo + " com valor " + $3.label);
 
-                    auto var = compilador.buscarVariavel($1.label);
+                    Variavel* var = compilador.buscarVariavel($1.label);
 
-                    if (var == NULL && !compilador.isCriandoFuncao()) {
-                        if (compilador.isCriandoFuncao()) {
-                            Funcao* funcao = compilador.getFuncaoAtual();
+                    if (var == NULL && compilador.isCriandoFuncao()) {
+                        Funcao* funcao = compilador.getFuncaoAtual();
+                        Parametro* parametro = funcao->buscarParametro($1.label);
 
-                            Parametro* parametro = funcao->buscarParametro($1.label);
-
-                            if (parametro == NULL) {
-                                yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
-                            }
-
+                        if (parametro != NULL) {
                             var = parametro->getVariavel();
                         }
                     }
 
+                    if (var == NULL) {
+                        yyerror("Não foi possível encontrar a variável \"" + $1.label + "\"");
+                    }
+                    
                     if (var->tipo != $3.tipo) {
                         yyerror("O tipo da variável \"" + $1.label + "\" (" + var->tipo + ") não corresponde ao tipo da expressão (" + $3.tipo + ")");
                     }
@@ -459,11 +459,15 @@ INICIAR_DO_WHILE: TK_DO {
             }
 
 INICIAR_FOR: TK_FOR {
+                compilador.debug("Iniciando FOR");  
+
                 compilador.adicionarContexto();
                 compilador.adicionarControleFluxo();
             }
 
 FOR_CONDICAO: EXPRESSAO {
+                compilador.debug("Iniciando condição do FOR");
+
                 if ($1.tipo != TIPO_BOOLEAN) {
                     yyerror("A expressão lógica do FOR deve ser do tipo booleano");
                 }
@@ -471,6 +475,8 @@ FOR_CONDICAO: EXPRESSAO {
                 $$ = $1;
             }
             | {
+                compilador.debug("Iniciando condição do FOR vazia");
+                
                 string temp = generateName();
                 compilador.adicionarVariavel(temp, temp, TIPO_BOOLEAN);
 
@@ -479,9 +485,21 @@ FOR_CONDICAO: EXPRESSAO {
                 $$.traducao = temp + " = true;\n";
             }
 
-INICIAR_FOR_ATRIBUICAO_OU_DECLARACAO : DECLARAR_VARIAVEL { $$.traducao = $1.traducao; }
-                                    | MULTIPLAS_ATRIBUICOES { $$.traducao = $1.traducao; }
-                                    | { $$.traducao = ""; }
+INICIAR_FOR_ATRIBUICAO_OU_DECLARACAO : DECLARAR_VARIAVEL { 
+                                        compilador.debug("Iniciando declaração ou atribuição de variável");
+
+                                        $$.traducao = $1.traducao; 
+                                    }
+                                    | MULTIPLAS_ATRIBUICOES {
+                                        compilador.debug("Iniciando múltiplas atribuições");
+
+                                        $$.traducao = $1.traducao; 
+                                    }
+                                    | { 
+                                        compilador.debug("Iniciando declaração ou atribuição de variável vazia");
+
+                                        $$.traducao = ""; 
+                                    }
 
 
 MULTIPLAS_ATRIBUICOES: ATRIBUIR_VARIAVEL {
@@ -491,13 +509,28 @@ MULTIPLAS_ATRIBUICOES: ATRIBUIR_VARIAVEL {
                         $$.traducao = $1.traducao + $3.traducao;
                     }
 
-MULTIPLAS_EXPRESOES: EXPRESSAO {
+ATRIBUIR_OU_EXPRESSAO: ATRIBUIR_VARIAVEL {
                         $$.traducao = $1.traducao;
                     }
-                    | MULTIPLAS_EXPRESOES TK_COMMA EXPRESSAO {
+                    | EXPRESSAO {
+                        $$.traducao = $1.traducao;
+                    }
+
+MULTIPLAS_EXPRESOES: ATRIBUIR_OU_EXPRESSAO {
+                        compilador.debug("Iniciando múltiplas expressões");
+
+                        $$.traducao = $1.traducao;
+                    }
+                    | MULTIPLAS_EXPRESOES TK_COMMA ATRIBUIR_OU_EXPRESSAO {
+                        compilador.debug("Iniciando múltiplas expressões");
+
                         $$.traducao = $1.traducao + $3.traducao;
                     }
-                    | { $$.traducao = ""; }
+                    | { 
+                        compilador.debug("Iniciando múltiplas expressões vazia");
+
+                        $$.traducao = ""; 
+                    }
 
 INICIAR_SWITCH: TK_SWITCH TK_OPEN_PARENTHESIS EXPRESSAO TK_CLOSE_PARENTHESIS {
                 compilador.adicionarContexto();
@@ -1092,6 +1125,42 @@ OPERADORES_ARITMETICOS: EXPRESSAO TK_PLUS EXPRESSAO {
 
                         $$.traducao += nomeFicticio + " = " + temp1 + " / " + temp2 + ";\n";
                         $$.tipo = tipoFinal;
+                        $$.label = nomeFicticio;
+                    }
+                    | EXPRESSAO TK_POW EXPRESSAO {
+                        compilador.debug("Elevando expressão " + $1.label + " (" + $1.tipo + ") a expressão " + $3.label + " (" + $3.tipo + ")");
+
+                        if (!compilador.isArithmetic($1.tipo) || !compilador.isArithmetic($3.tipo)) {
+                            yyerror("Operadores aritméticos só podem ser aplicados a tipos numéricos");
+                        }
+                        
+                        string label1 = $1.label;
+                        string label2 = $3.label;
+
+                        $$.traducao = $1.traducao + $3.traducao;
+
+                        if ($1.tipo != TIPO_FLOAT) {
+                            string temp1Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $1.label + " para tipo " + TIPO_FLOAT);
+                            compilador.adicionarVariavel(temp1Name, temp1Name, TIPO_FLOAT);
+                            $$.traducao += temp1Name + " = (float) " + $1.label + ";\n";
+                            label1 = temp1Name;
+                        }
+
+                        if ($3.tipo != TIPO_FLOAT) {
+                            string temp2Name = generateName();
+                            compilador.debug("Convertendo implícita expressão " + $3.label + " para tipo " + TIPO_FLOAT);
+                            compilador.adicionarVariavel(temp2Name, temp2Name, TIPO_FLOAT);
+                            $$.traducao += temp2Name + " = (float) " + $3.label + ";\n";
+                            label2 = temp2Name;
+                        }
+
+                        string nomeFicticio = generateName();
+
+                        compilador.adicionarVariavel(nomeFicticio, nomeFicticio, $1.tipo);
+
+                        $$.traducao += nomeFicticio + " = pow(" + label1 + ", " + label2 + ");\n";
+                        $$.tipo = $1.tipo;
                         $$.label = nomeFicticio;
                     }
                     | EXPRESSAO TK_MOD EXPRESSAO {
